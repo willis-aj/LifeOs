@@ -2,12 +2,17 @@
 Turns goals + due routines into a concrete hourly schedule for today.
 
 Respects:
-  - Energy modes (low / normal / high) which cap tasks-per-hour and the
-    max duration of any single task.
-  - Chaos Mode: shuffles the schedule and allows more tasks per hour, at a
+  - Energy modes (low / normal / high) which cap how many minutes of task
+    duration can be packed into a single hour, and the max duration of any
+    single task.
+  - Chaos Mode: shuffles the schedule and allows more minutes per hour, at a
     higher XP multiplier, for unpredictable days.
   - Comfort Mode: strips the schedule down to essential routines only, at
     a gentle pace, so streaks survive rough days.
+
+Hours are bin-packed by duration rather than task count: an hour holds as
+many tasks as fit within its minute budget, and anything that doesn't fit
+overflows into the next available hour.
 """
 
 from __future__ import annotations
@@ -29,6 +34,22 @@ def _mode_settings(state: PlayerState) -> dict:
     return dict(config.ENERGY_MODES.get(state.energy_mode, config.ENERGY_MODES["normal"]))
 
 
+def _hour_capacity(state: PlayerState) -> int:
+    return _mode_settings(state).get("hour_capacity_minutes", 60)
+
+
+def _day_hours() -> List[int]:
+    return list(range(config.DAY_START_HOUR, config.DAY_END_HOUR + 1))
+
+
+def _used_minutes(tasks: List[Task], hour: int, exclude_id: Optional[str] = None) -> int:
+    return sum(
+        t.duration_minutes
+        for t in tasks
+        if t.scheduled_hour == hour and t.id != exclude_id and not t.skipped
+    )
+
+
 def _routine_to_task(routine: Routine, today: datetime.date, xp_multiplier: float) -> Task:
     return Task(
         id=f"routine-{routine.id}-{today.isoformat()}",
@@ -41,6 +62,25 @@ def _routine_to_task(routine: Routine, today: datetime.date, xp_multiplier: floa
         source_routine_id=routine.id,
         dependencies=list(routine.requires),
     )
+
+
+def _goal_tasks(goals: List[Goal], today: datetime.date, xp_multiplier: float) -> List[Task]:
+    tasks: List[Task] = []
+    for goal in goals:
+        for i in range(config.GOAL_TASKS_PER_DAY):
+            tasks.append(
+                Task(
+                    id=f"goal-{goal.id}-{today.isoformat()}-{i}",
+                    label=f"Work on: {goal.name}",
+                    goal=goal.id,
+                    scheduled_hour=-1,  # unassigned, filled in by build_daily_schedule
+                    duration_minutes=45,
+                    xp=round(goal.base_xp_per_task * xp_multiplier),
+                    boss=False,
+                    source_routine_id=None,
+                )
+            )
+    return tasks
 
 
 def is_locked(dependencies: List[str], routines_by_id: dict, today: datetime.date) -> bool:
@@ -65,23 +105,28 @@ def apply_lock_state(tasks: List[Task], routines: List[Routine], today: datetime
             task.locked = False
 
 
-def _goal_tasks(goals: List[Goal], today: datetime.date, xp_multiplier: float) -> List[Task]:
-    tasks: List[Task] = []
-    for goal in goals:
-        for i in range(config.GOAL_TASKS_PER_DAY):
-            tasks.append(
-                Task(
-                    id=f"goal-{goal.id}-{today.isoformat()}-{i}",
-                    label=f"Work on: {goal.name}",
-                    goal=goal.id,
-                    scheduled_hour=-1,  # unassigned, filled in by build_daily_schedule
-                    duration_minutes=45,
-                    xp=round(goal.base_xp_per_task * xp_multiplier),
-                    boss=False,
-                    source_routine_id=None,
-                )
-            )
-    return tasks
+def _place_in_hour_or_later(
+    tasks: List[Task],
+    task: Task,
+    hours: List[int],
+    capacity: int,
+    start_hour: int,
+    strictly_after: bool = False,
+) -> int:
+    """Find the earliest hour at/after `start_hour` (or strictly after, if
+    requested) with enough remaining duration budget for `task`. Falls back
+    to the last hour of the day (overflow) if nothing fits."""
+    if strictly_after:
+        candidates = [h for h in hours if h > start_hour]
+    else:
+        candidates = [h for h in hours if h >= start_hour]
+    if not candidates:
+        candidates = [hours[-1]]
+
+    for h in candidates:
+        if _used_minutes(tasks, h, exclude_id=task.id) + task.duration_minutes <= capacity:
+            return h
+    return candidates[-1]
 
 
 def build_daily_schedule(
@@ -93,7 +138,7 @@ def build_daily_schedule(
     today = today or datetime.date.today()
     settings = _mode_settings(state)
     xp_multiplier = settings.get("xp_multiplier", 1.0)
-    max_per_hour = settings.get("max_tasks_per_hour", 1)
+    hour_capacity = settings.get("hour_capacity_minutes", 60)
     duration_cap = settings.get("task_duration_cap_minutes")
 
     due = due_routines(routines, today)
@@ -112,42 +157,134 @@ def build_daily_schedule(
     if settings.get("shuffle"):
         random.shuffle(tasks)
 
-    hours = list(range(config.DAY_START_HOUR, config.DAY_END_HOUR + 1))
-    slot_counts = {h: 0 for h in hours}
+    hours = _day_hours()
 
-    preferred = [t for t in tasks if t.scheduled_hour != -1 and t.scheduled_hour in slot_counts]
-    unassigned = [t for t in tasks if t.scheduled_hour == -1 or t.scheduled_hour not in slot_counts]
+    # Tasks with a preferred hour get first crack at it; anything unassigned
+    # (goal deep-work tasks) fills in starting from the top of the day.
+    preferred = [t for t in tasks if t.scheduled_hour != -1 and t.scheduled_hour in hours]
+    unassigned = [t for t in tasks if t.scheduled_hour == -1 or t.scheduled_hour not in hours]
 
+    placed: List[Task] = []
     for t in preferred:
-        h = t.scheduled_hour
-        if slot_counts[h] < max_per_hour:
-            slot_counts[h] += 1
-        else:
-            # Preferred hour is full: bump to the next open hour.
-            placed = False
-            for candidate in hours:
-                if slot_counts[candidate] < max_per_hour:
-                    t.scheduled_hour = candidate
-                    slot_counts[candidate] += 1
-                    placed = True
-                    break
-            if not placed:
-                t.scheduled_hour = hours[-1]
-
+        h = _place_in_hour_or_later(placed, t, hours, hour_capacity, t.scheduled_hour)
+        t.scheduled_hour = h
+        placed.append(t)
     for t in unassigned:
-        placed = False
-        for candidate in hours:
-            if slot_counts[candidate] < max_per_hour:
-                t.scheduled_hour = candidate
-                slot_counts[candidate] += 1
-                placed = True
-                break
-        if not placed:
-            t.scheduled_hour = hours[-1]
+        h = _place_in_hour_or_later(placed, t, hours, hour_capacity, hours[0])
+        t.scheduled_hour = h
+        placed.append(t)
+
+    placed.sort(key=lambda t: t.scheduled_hour)
+    apply_lock_state(placed, routines, today)
+    return placed
+
+
+def insert_task(tasks: List[Task], new_task: Task, preferred_hour: int, state: PlayerState) -> Task:
+    """Insert a manually-added task, preferring `preferred_hour` (typically
+    the current hour). If that hour's duration budget is full, the new task
+    (not the existing ones) is pushed forward to the next hour with room."""
+    hours = _day_hours()
+    capacity = _hour_capacity(state)
+    h = _place_in_hour_or_later(tasks, new_task, hours, capacity, preferred_hour)
+    new_task.scheduled_hour = h
+    tasks.append(new_task)
+    tasks.sort(key=lambda t: t.scheduled_hour)
+    return new_task
+
+
+def reschedule_after_skip(tasks: List[Task], skipped_task: Task, state: PlayerState, today: datetime.date) -> List[Task]:
+    """Called when a task that other tasks depend on gets skipped instead of
+    completed. Rather than leaving dependents locked indefinitely, the
+    skipped prerequisite is deferred to the next open hour, and every task
+    (direct or cascading) that depends on it is pushed to occur after that
+    new hour, maintaining dependency order across the day.
+
+    Returns the list of tasks that were moved (including `skipped_task`).
+    """
+    hours = _day_hours()
+    capacity = _hour_capacity(state)
+    moved: List[Task] = []
+
+    old_hour = skipped_task.scheduled_hour
+    new_hour = _place_in_hour_or_later(tasks, skipped_task, hours, capacity, old_hour, strictly_after=True)
+    skipped_task.scheduled_hour = new_hour
+    skipped_task.skipped = False
+    moved.append(skipped_task)
+
+    frontier = [skipped_task]
+    visited_ids = {skipped_task.id}
+
+    while frontier:
+        current = frontier.pop(0)
+        if not current.source_routine_id:
+            continue
+        for dependent in tasks:
+            if dependent.id in visited_ids or dependent.completed:
+                continue
+            if current.source_routine_id not in dependent.dependencies:
+                continue
+            visited_ids.add(dependent.id)
+            if dependent.scheduled_hour <= current.scheduled_hour:
+                new_dep_hour = _place_in_hour_or_later(
+                    tasks, dependent, hours, capacity, current.scheduled_hour, strictly_after=True
+                )
+                dependent.scheduled_hour = new_dep_hour
+                moved.append(dependent)
+            frontier.append(dependent)
 
     tasks.sort(key=lambda t: t.scheduled_hour)
-    apply_lock_state(tasks, routines, today)
-    return tasks
+    return moved
+
+
+def pull_task_to_hour(tasks: List[Task], task: Task, target_hour: int, state: PlayerState) -> Task:
+    """Pull a later task into `target_hour` (typically 'now'). If the task
+    itself depends on a still-incomplete prerequisite that hasn't happened
+    yet, that prerequisite is pulled forward first (recursively) so the
+    dependent never lands at or before its own prerequisite."""
+    hours = _day_hours()
+    capacity = _hour_capacity(state)
+
+    effective_hour = target_hour
+    for dep_id in task.dependencies:
+        prereq_task = next(
+            (t for t in tasks if t.source_routine_id == dep_id and not t.completed), None
+        )
+        if prereq_task is None:
+            continue
+        if prereq_task.scheduled_hour > effective_hour:
+            pull_task_to_hour(tasks, prereq_task, target_hour, state)
+        effective_hour = max(effective_hour, prereq_task.scheduled_hour)
+
+    new_hour = _place_in_hour_or_later(tasks, task, hours, capacity, effective_hour)
+    task.scheduled_hour = new_hour
+    tasks.sort(key=lambda t: t.scheduled_hour)
+    return task
+
+
+def push_overdue_to_current_hour(
+    tasks: List[Task], overdue: List[Task], current_hour: int, state: PlayerState
+) -> List[Task]:
+    """Push tasks left incomplete in past hours into the current hour,
+    reflowing (bin-packing) forward as needed. Prerequisite tasks are
+    placed before their dependents so dependency order survives the push -
+    this applies uniformly to routines, manual tasks, boss fights, and
+    prerequisite/dependent tasks alike."""
+    hours = _day_hours()
+    capacity = _hour_capacity(state)
+
+    # Tasks without their own dependencies (candidate prerequisites) get
+    # placed first so any co-overdue dependents land at/after them.
+    ordered = sorted(overdue, key=lambda t: bool(t.dependencies))
+
+    moved: List[Task] = []
+    for t in ordered:
+        new_hour = _place_in_hour_or_later(tasks, t, hours, capacity, current_hour)
+        if new_hour != t.scheduled_hour:
+            t.scheduled_hour = new_hour
+            moved.append(t)
+
+    tasks.sort(key=lambda t: t.scheduled_hour)
+    return moved
 
 
 def current_hour_tasks(tasks: List[Task], hour: Optional[int] = None) -> List[Task]:
