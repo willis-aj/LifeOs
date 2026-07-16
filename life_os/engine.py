@@ -7,6 +7,12 @@ API.
 `config` for display labels). All engine state is scoped to a single
 `player_id` - callers select or create a player via `persistence.list_players()`
 / `persistence.create_player()` before constructing an engine.
+
+The full schedule (`self.schedule`) spans multiple days - `self.tasks` is a
+thin property proxy onto `self.schedule[today]` so the rest of the engine
+(and all existing callers) can keep treating "today's tasks" as a plain
+list, while pushed/rolled-over tasks land on whichever day actually has
+room.
 """
 
 from __future__ import annotations
@@ -34,44 +40,87 @@ class LifeOSEngine:
         self.state: PlayerState = persistence.load_player_state(player_id)
         self.goals: List[Goal] = persistence.load_goals(player_id)
         self.routines: List[Routine] = persistence.load_routines(player_id)
+        self.schedule: Dict[str, List[Task]] = persistence.load_schedule(player_id)
 
         gamification.sync_season(self.state, self.today)
 
-        self.tasks: List[Task] = self._load_or_build_schedule()
+        scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
         self.refresh_locks()
+        self.save()
+
+    # ------------------------------------------------------------------
+    # Today's tasks - a view onto self.schedule
+    # ------------------------------------------------------------------
+
+    @property
+    def tasks(self) -> List[Task]:
+        return self.schedule.setdefault(self.today.isoformat(), [])
+
+    @tasks.setter
+    def tasks(self, value: List[Task]) -> None:
+        self.schedule[self.today.isoformat()] = value
 
     # ------------------------------------------------------------------
     # Schedule management
     # ------------------------------------------------------------------
 
-    def _schedule_is_current(self, tasks: Optional[List[Task]]) -> bool:
-        if not tasks:
-            return False
-        marker = self.today.isoformat()
-        return all(marker in t.id for t in tasks)
-
-    def _load_or_build_schedule(self) -> List[Task]:
-        tasks = persistence.load_tasks(self.player_id)
-        if not self._schedule_is_current(tasks):
-            tasks = scheduler.build_daily_schedule(self.goals, self.routines, self.state, self.today)
-            persistence.save_tasks(self.player_id, tasks)
-        return tasks
-
     def rebuild_schedule(self) -> None:
-        """Regenerate the schedule (e.g. after a mode switch), preserving
-        any tasks already completed or skipped today."""
-        handled = [t for t in self.tasks if t.completed or t.skipped]
-        handled_ids = {t.id for t in handled}
-
-        fresh = scheduler.build_daily_schedule(self.goals, self.routines, self.state, self.today)
-        fresh = [t for t in fresh if t.id not in handled_ids]
-
-        self.tasks = handled + fresh
-        self.tasks.sort(key=lambda t: t.scheduled_hour)
-        persistence.save_tasks(self.player_id, self.tasks)
+        """Regenerate today's routine/goal tasks (e.g. after a mode switch),
+        preserving completed/skipped tasks and anything manually-added,
+        pulled-forward, or rolled over from a previous day."""
+        scheduler.build_daily_schedule(
+            self.schedule, self.goals, self.routines, self.state, self.today, force=True
+        )
+        persistence.save_schedule(self.player_id, self.schedule)
 
     def refresh_locks(self) -> None:
         scheduler.apply_lock_state(self.tasks, self.routines, self.today)
+
+    def check_for_new_day(self) -> Dict:
+        """Detect whether the real calendar date has advanced since this
+        engine's `self.today`. If so, roll over each day's unfinished
+        schedule in turn (see `scheduler.rollover_to_next_day`) and advance
+        the engine to the new day. Returns a summary for the CLI to report."""
+        real_today = datetime.date.today()
+        summary = {"rolled_over": False, "days_advanced": 0, "carried_count": 0}
+        if real_today <= self.today:
+            return summary
+
+        while self.today < real_today:
+            result = scheduler.rollover_to_next_day(self.schedule, self.routines, self.state, self.today)
+            for routine_id in result["missed_daily_routine_ids"]:
+                routine = self.routine_by_id(routine_id)
+                if routine is not None and self.today.isoformat() not in routine.missed_dates:
+                    routine.missed_dates.append(self.today.isoformat())
+            summary["rolled_over"] = True
+            summary["days_advanced"] += 1
+            summary["carried_count"] += len(result["carried"])
+            self.today = self.today + datetime.timedelta(days=1)
+
+        gamification.sync_season(self.state, self.today)
+        scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
+        self.refresh_locks()
+        self.save()
+        return summary
+
+    def reflow_overdue_tasks(self) -> List[Task]:
+        """Detect any incomplete tasks left behind in past hours (the user
+        didn't get to them before the hour moved on) and roll them forward -
+        across the rest of today, into tomorrow if today's out of room -
+        the same way regardless of whether the overdue task is a routine, a
+        manually-added task, a boss fight, or part of a dependency chain.
+        Returns the tasks that were moved (empty if nothing was overdue)."""
+        current_hour = datetime.datetime.now().hour
+        overdue = [
+            t for t in self.tasks
+            if not t.completed and not t.skipped and t.scheduled_hour < current_hour
+        ]
+        if not overdue:
+            return []
+        moved = scheduler.push_overdue_to_current_hour(self.schedule, overdue, current_hour, self.today, self.state)
+        self.refresh_locks()
+        self.save()
+        return moved
 
     def home_view(self) -> Dict:
         """Snapshot for the main home screen: the current hour plus
@@ -84,28 +133,9 @@ class LifeOSEngine:
             "tasks": self.hour_tasks(current_hour),
         }
 
-    def reflow_overdue_tasks(self) -> List[Task]:
-        """Detect any incomplete tasks left behind in past hours (the user
-        didn't get to them before the hour moved on) and push them into the
-        current hour, reflowing the rest of the day forward as needed.
-        Works the same regardless of whether the overdue task is a routine,
-        a manually-added task, a boss fight, or part of a dependency chain.
-        Returns the tasks that were moved (empty if nothing was overdue)."""
-        current_hour = datetime.datetime.now().hour
-        overdue = [
-            t for t in self.tasks
-            if not t.completed and not t.skipped and t.scheduled_hour < current_hour
-        ]
-        if not overdue:
-            return []
-        moved = scheduler.push_overdue_to_current_hour(self.tasks, overdue, current_hour, self.state)
-        self.refresh_locks()
-        self.save()
-        return moved
-
     def later_today_tasks(self, hour: Optional[int] = None) -> List[Task]:
         """Pending tasks scheduled strictly after the given (or current)
-        hour, in schedule order - candidates for pulling forward."""
+        hour today, in schedule order - candidates for pulling forward."""
         hour = hour if hour is not None else datetime.datetime.now().hour
         return sorted(
             (t for t in self.tasks if not t.completed and not t.skipped and t.scheduled_hour > hour),
@@ -117,7 +147,7 @@ class LifeOSEngine:
         the schedule and pulling any of its own unmet prerequisites forward
         too so dependency order is preserved."""
         target_hour = hour if hour is not None else datetime.datetime.now().hour
-        scheduler.pull_task_to_hour(self.tasks, task, target_hour, self.state)
+        scheduler.pull_task_to_hour(self.schedule, task, self.today, target_hour, self.state)
         self.refresh_locks()
         self.save()
         return task
@@ -138,6 +168,7 @@ class LifeOSEngine:
             raise ValueError("Task label cannot be empty.")
         if duration_minutes <= 0:
             raise ValueError("Duration must be a positive number of minutes.")
+        duration_minutes = min(duration_minutes, scheduler.hour_capacity(self.state))
 
         goal = self.goal_by_id(goal_id) if goal_id else None
         if goal is None:
@@ -156,7 +187,51 @@ class LifeOSEngine:
             boss=False,
             source_routine_id=None,
         )
-        scheduler.insert_task(self.tasks, task, target_hour, self.state)
+        scheduler.insert_task(self.schedule, task, self.today, target_hour, self.state)
+        self.refresh_locks()
+        self.save()
+        return task
+
+    def create_scheduled_event(
+        self,
+        event_date: datetime.date,
+        label: Optional[str] = None,
+        hour: Optional[int] = None,
+        duration_minutes: int = 60,
+        goal_id: Optional[str] = None,
+        xp: Optional[int] = None,
+        boss: bool = False,
+    ) -> Task:
+        """Create the "actual event" for a completed scheduling task (e.g.
+        the real dinner, raid, or appointment) on a chosen future date. It's
+        a genuinely one-off Task - not tied to any routine - so it behaves
+        exactly like a manual task: bin-packed, dependency-aware (should it
+        ever gain dependencies), editable via goal edits, and eligible for
+        XP and boss-fight rewards, and it naturally surfaces in day/month/
+        backlog views once inserted."""
+        label = (label or "Scheduled event").strip() or "Scheduled event"
+        if duration_minutes <= 0:
+            raise ValueError("Duration must be a positive number of minutes.")
+        duration_minutes = min(duration_minutes, scheduler.hour_capacity(self.state))
+
+        goal = self.goal_by_id(goal_id) if goal_id else None
+        if goal is None:
+            goal = self.goals[0]
+
+        xp_value = xp if xp is not None else max(10, round(duration_minutes / 2))
+        target_hour = hour if hour is not None else config.DAY_START_HOUR
+
+        task = Task(
+            id=f"event-{event_date.isoformat()}-{uuid.uuid4().hex[:8]}",
+            label=label,
+            goal=goal.id,
+            scheduled_hour=target_hour,
+            duration_minutes=duration_minutes,
+            xp=xp_value,
+            boss=boss,
+            source_routine_id=None,
+        )
+        scheduler.insert_task(self.schedule, task, event_date, target_hour, self.state)
         self.refresh_locks()
         self.save()
         return task
@@ -167,6 +242,42 @@ class LifeOSEngine:
         for t in self.tasks:
             by_hour.setdefault(t.scheduled_hour, []).append(t)
         return [{"hour": h, "tasks": by_hour[h]} for h in sorted(by_hour)]
+
+    def backlog_view(self) -> Dict:
+        """Snapshot of everything that's been pushed forward today, plus
+        what's already lined up for tomorrow and later this week - for the
+        CLI's [b]acklog view."""
+        today_key = self.today.isoformat()
+
+        pushed_today = [
+            t for t in self.schedule.get(today_key, [])
+            if t.push_reason and not t.completed
+        ]
+
+        tomorrow_key = (self.today + datetime.timedelta(days=1)).isoformat()
+        tomorrow_tasks = sorted(
+            (t for t in self.schedule.get(tomorrow_key, []) if not t.completed),
+            key=lambda t: t.scheduled_hour,
+        )
+
+        later_this_week: List[Dict] = []
+        day = self.today + datetime.timedelta(days=2)
+        week_end = self.today + datetime.timedelta(days=7)
+        while day <= week_end:
+            key = day.isoformat()
+            day_tasks = sorted(
+                (t for t in self.schedule.get(key, []) if not t.completed),
+                key=lambda t: t.scheduled_hour,
+            )
+            if day_tasks:
+                later_this_week.append({"date": key, "tasks": day_tasks})
+            day += datetime.timedelta(days=1)
+
+        return {
+            "pushed_today": pushed_today,
+            "tomorrow": tomorrow_tasks,
+            "later_this_week": later_this_week,
+        }
 
     def month_view(self, year: Optional[int] = None, month: Optional[int] = None) -> Dict:
         """Project recurring routines onto a calendar month so the CLI can
@@ -205,6 +316,20 @@ class LifeOSEngine:
                 while day <= days_in_month:
                     add_event(day, routine.label)
                     day += interval
+
+        # One-off scheduled events (created from completing a scheduling
+        # task) land on whatever real date the user picked, so surface
+        # those directly from the schedule rather than projecting them.
+        for date_key, day_tasks in self.schedule.items():
+            try:
+                d = datetime.date.fromisoformat(date_key)
+            except ValueError:
+                continue
+            if d.year != year or d.month != month:
+                continue
+            for t in day_tasks:
+                if t.id.startswith("event-") and not t.completed:
+                    add_event(d.day, t.label)
 
         return {
             "year": year,
@@ -270,6 +395,9 @@ class LifeOSEngine:
             if routine is not None:
                 routines_mod.mark_completed(routine, self.today)
 
+        if task.is_scheduling_task:
+            result["scheduling_task_completed"] = True
+
         self.refresh_locks()
         self.save()
         return result
@@ -278,18 +406,18 @@ class LifeOSEngine:
         if not task.source_routine_id:
             return []
         return [
-            t for t in self.tasks
+            t for day_tasks in self.schedule.values() for t in day_tasks
             if not t.completed and task.source_routine_id in t.dependencies
         ]
 
     def skip_task(self, task: Task) -> Optional[str]:
         """Skip a task. If other tasks depend on it, don't abandon it -
         reschedule it (and cascade-push its dependents) later in the day
-        instead. Returns a message describing what happened when a
-        reschedule occurred, or None for a plain skip."""
+        (or tomorrow, if today's full) instead. Returns a message describing
+        what happened when a reschedule occurred, or None for a plain skip."""
         dependents = self._dependents_of(task)
         if dependents:
-            scheduler.reschedule_after_skip(self.tasks, task, self.state, self.today)
+            scheduler.reschedule_after_skip(self.schedule, task, self.state, self.today)
             self.refresh_locks()
             self.save()
             return "Prerequisite skipped — rescheduling it and pushing dependent tasks later."
@@ -422,8 +550,10 @@ class LifeOSEngine:
             goal.milestones_reached = []
         for routine in self.routines:
             routine.last_completed_date = None
+            routine.missed_dates = []
         gamification.sync_season(self.state, self.today)
-        self.tasks = scheduler.build_daily_schedule(self.goals, self.routines, self.state, self.today)
+        self.schedule = {}
+        scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
         self.refresh_locks()
         self.save()
 
@@ -462,4 +592,4 @@ class LifeOSEngine:
         persistence.save_player_state(self.player_id, self.state)
         persistence.save_goals(self.player_id, self.goals)
         persistence.save_routines(self.player_id, self.routines)
-        persistence.save_tasks(self.player_id, self.tasks)
+        persistence.save_schedule(self.player_id, self.schedule)

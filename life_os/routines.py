@@ -24,6 +24,10 @@ def is_due(routine: Routine, today: datetime.date) -> bool:
     if routine.last_completed_date is None:
         return True
 
+    if routine.frequency == "once":
+        # One-time (e.g. scheduling-task) routines never recur once done.
+        return False
+
     last = _parse_date(routine.last_completed_date)
     if last >= today:
         # Already handled today (or in the future, e.g. clock weirdness).

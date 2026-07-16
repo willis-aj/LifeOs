@@ -57,7 +57,9 @@ GOALS: List[Dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # Routines
 # ---------------------------------------------------------------------------
-# frequency: "daily" | "weekly" | "monthly" | "every_n_days"
+# frequency: "daily" | "weekly" | "monthly" | "every_n_days" | "once"
+# "once" routines (scheduling-type tasks) are due until first completed,
+# then never again - see routines.is_due().
 # time_of_day: preferred hour (0-23) or None if flexible
 # interval_days: only used when frequency == "every_n_days"
 
@@ -183,6 +185,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 12,
         "duration_minutes": 10,
         "xp": 5,
+        "is_scheduling_task": True,
     },
     {
         "id": "destiny_2_raid",
@@ -203,6 +206,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 10,
         "duration_minutes": 10,
         "xp": 5,
+        "is_scheduling_task": True,
     },
     {
         "id": "dinner_with_friends",
@@ -222,6 +226,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 13,
         "duration_minutes": 5,
         "xp": 5,
+        "is_scheduling_task": True,
     },
     {
         "id": "junk_journaling",
@@ -232,6 +237,36 @@ ROUTINES: List[Dict[str, Any]] = [
         "duration_minutes": 30,
         "xp": 20,
         "requires": ["rsvp_junk_journaling"],
+    },
+    {
+        "id": "schedule_game_night",
+        "label": "Schedule friend game night",
+        "goal": "social",
+        "frequency": "once",
+        "time_of_day": 12,
+        "duration_minutes": 10,
+        "xp": 5,
+        "is_scheduling_task": True,
+    },
+    {
+        "id": "schedule_medical_appointment",
+        "label": "Schedule medical appointment",
+        "goal": "health",
+        "frequency": "once",
+        "time_of_day": 9,
+        "duration_minutes": 10,
+        "xp": 5,
+        "is_scheduling_task": True,
+    },
+    {
+        "id": "schedule_creative_session",
+        "label": "Schedule creative session",
+        "goal": "creativity",
+        "frequency": "once",
+        "time_of_day": 14,
+        "duration_minutes": 10,
+        "xp": 5,
+        "is_scheduling_task": True,
     },
 ]
 

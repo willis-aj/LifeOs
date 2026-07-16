@@ -17,13 +17,20 @@ from .models import Task
 
 DIVIDER = "-" * 60
 ACTIONS_HELP = (
-    "[c]omplete  [s]kip  [a]dd task  [d]ay view  [month]  [m]ode  "
+    "[c]omplete  [s]kip  [a]dd task  [d]ay view  [month]  [b]acklog  [m]ode  "
     "[g]oals  [e]dit goals  [i]nventory  [r]eset  [p]layer  [h]ome  [q]uit"
 )
 IDLE_ACTIONS_HELP = (
-    "[a]dd task  [d]ay view  [month]  [m]ode  [g]oals  [e]dit goals  "
+    "[a]dd task  [d]ay view  [month]  [b]acklog  [m]ode  [g]oals  [e]dit goals  "
     "[i]nventory  [r]eset  [p]layer  [h]ome  [q]uit"
 )
+
+PUSH_REASON_LABELS = {
+    "skip": "skipped",
+    "dependency_push": "dependency push",
+    "hour_drift": "hour drift",
+    "eod_rollover": "end-of-day rollover",
+}
 
 
 def _format_hour(hour: int) -> str:
@@ -411,6 +418,44 @@ def _print_day_view(engine: LifeOSEngine) -> None:
     print(f"\nMode: {_mode_label(engine)}")
 
 
+def _describe_task_line(engine: LifeOSEngine, t: Task, include_origin: bool = True) -> str:
+    goal = engine.goal_by_id(t.goal)
+    goal_name = goal.name if goal else t.goal
+    tag = " [BOSS]" if t.boss else ""
+    bits = []
+    if include_origin and t.push_reason:
+        bits.append(PUSH_REASON_LABELS.get(t.push_reason, t.push_reason))
+    if t.locked:
+        bits.append(f"locked: {engine.lock_reason(t)}")
+    note = f"  ({', '.join(bits)})" if bits else ""
+    return f"  - [{_format_hour(t.scheduled_hour)}] {t.label}{tag} ({t.duration_minutes} min, {goal_name}, {t.xp} XP){note}"
+
+
+def _print_backlog(engine: LifeOSEngine) -> None:
+    view = engine.backlog_view()
+    print("\n=== Backlog ===")
+
+    print("\nPushed forward today:")
+    if not view["pushed_today"]:
+        print("  (none)")
+    for t in view["pushed_today"]:
+        print(_describe_task_line(engine, t))
+
+    print("\nTomorrow:")
+    if not view["tomorrow"]:
+        print("  (nothing yet)")
+    for t in view["tomorrow"]:
+        print(_describe_task_line(engine, t))
+
+    print("\nLater this week:")
+    if not view["later_this_week"]:
+        print("  (nothing yet)")
+    for entry in view["later_this_week"]:
+        print(f"  {entry['date']}:")
+        for t in entry["tasks"]:
+            print("  " + _describe_task_line(engine, t))
+
+
 def _print_month_view(engine: LifeOSEngine) -> None:
     view = engine.month_view()
     month_name = calendar.month_name[view["month"]]
@@ -425,6 +470,44 @@ def _print_month_view(engine: LifeOSEngine) -> None:
     print("\nActive goals:")
     for g in view["goals"]:
         print(f"  - {g['name']}: level {g['level']}, {g['xp']} XP")
+
+
+# ---------------------------------------------------------------------------
+# Scheduled event creation (after completing a scheduling-type task)
+# ---------------------------------------------------------------------------
+
+def _offer_create_scheduled_event(engine: LifeOSEngine) -> None:
+    print("\nYou just completed a scheduling task.")
+    choice = _prompt("Would you like to create the actual event on another day? [y]es  [n]o: ")
+    if choice != "y":
+        return
+
+    date_raw = _prompt_raw("Date for the event (YYYY-MM-DD): ")
+    try:
+        event_date = datetime.date.fromisoformat(date_raw)
+    except ValueError:
+        print("Could not parse that date - skipping event creation.")
+        return
+
+    label = _prompt_raw("Event name (blank for 'Scheduled event'): ").strip() or None
+
+    time_raw = _prompt("Time - hour 0-23, optional (blank to use day start): ").strip()
+    hour = int(time_raw) if time_raw.isdigit() and 0 <= int(time_raw) <= 23 else None
+
+    duration_raw = _prompt("Duration in minutes, optional (blank for 60): ").strip()
+    duration = int(duration_raw) if duration_raw.isdigit() and int(duration_raw) > 0 else 60
+
+    _print_goal_list(engine)
+    goal_raw = _prompt("Goal number or id (blank for default): ").strip()
+    goal_id = _resolve_goal_id(engine, goal_raw) if goal_raw else None
+
+    boss_raw = _prompt("Is this a boss fight? [y]es  [n]o (blank = no): ").strip()
+    boss = boss_raw == "y"
+
+    engine.create_scheduled_event(
+        event_date, label=label, hour=hour, duration_minutes=duration, goal_id=goal_id, boss=boss
+    )
+    print("Event created and scheduled.")
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +527,8 @@ def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
             _print_result(result)
             if result.get("locked"):
                 continue
+            if result.get("scheduling_task_completed"):
+                _offer_create_scheduled_event(engine)
             return None
         if action == "s":
             message = engine.skip_task(task)
@@ -462,6 +547,9 @@ def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
             continue
         if action == "month":
             _print_month_view(engine)
+            continue
+        if action == "b":
+            _print_backlog(engine)
             continue
         if action == "m":
             signal = _mode_menu(engine)
@@ -502,6 +590,14 @@ def _play_session(engine: LifeOSEngine) -> str:
     print(f'"{engine.companion_message()}"')
 
     while True:
+        rollover = engine.check_for_new_day()
+        if rollover["rolled_over"]:
+            day_word = "day" if rollover["days_advanced"] == 1 else "days"
+            print(
+                f"\nNew day detected ({rollover['days_advanced']} {day_word} passed) - "
+                f"rolled {rollover['carried_count']} unfinished task(s) forward."
+            )
+
         _print_header(engine)
 
         moved_overdue = engine.reflow_overdue_tasks()
@@ -526,6 +622,8 @@ def _play_session(engine: LifeOSEngine) -> str:
                     _print_day_view(engine)
                 elif action == "month":
                     _print_month_view(engine)
+                elif action == "b":
+                    _print_backlog(engine)
                 elif action == "m":
                     _mode_menu(engine)
                 elif action == "g":

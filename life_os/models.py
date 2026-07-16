@@ -45,6 +45,9 @@ class Task:
     source_routine_id: Optional[str] = None
     dependencies: List[str] = field(default_factory=list)  # prerequisite routine ids
     locked: bool = False  # True while any dependency is unmet today
+    scheduled_date: str = ""  # ISO date - which day's schedule this task lives on
+    push_reason: Optional[str] = None  # "skip" | "dependency_push" | "hour_drift" | "eod_rollover" | None
+    is_scheduling_task: bool = False  # True for "schedule X" / "RSVP to X" style tasks
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -59,7 +62,7 @@ class Routine:
     id: str
     label: str
     goal: str
-    frequency: str  # "daily" | "weekly" | "monthly" | "every_n_days"
+    frequency: str  # "daily" | "weekly" | "monthly" | "every_n_days" | "once"
     time_of_day: Optional[int]
     duration_minutes: int
     xp: int
@@ -67,6 +70,8 @@ class Routine:
     interval_days: Optional[int] = None
     last_completed_date: Optional[str] = None  # ISO date string
     requires: List[str] = field(default_factory=list)  # prerequisite routine ids
+    missed_dates: List[str] = field(default_factory=list)  # ISO dates this routine went incomplete
+    is_scheduling_task: bool = False  # True for "schedule X" / "RSVP to X" style routines
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

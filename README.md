@@ -22,10 +22,29 @@ boss fights) on top so check-ins feel like progress instead of chores.
   longer locks its dependent forever - it automatically reschedules the
   skipped task to the next open hour and pushes its dependents later so
   order is preserved across the day.
-- **Scheduler** - builds an hourly schedule for today from due routines and
-  goal deep-work tasks, bin-packing each hour by task duration (multiple
-  short tasks share an hour; anything that doesn't fit overflows to the
-  next), respecting your current energy mode.
+- **Scheduling tasks -> real events** - completing a "scheduling"-type task
+  (Schedule raid, Schedule dinner with friends, RSVP to junk journaling,
+  Schedule friend game night, Schedule medical appointment, Schedule
+  creative session) offers to create the actual one-off event on whatever
+  date/time/duration you choose. The created event is a completely normal
+  task from then on - bin-packed, shows up in day/month/backlog views,
+  awards XP, and can be a boss fight. Scheduling tasks themselves are
+  one-time: once completed they never regenerate, and if left unfinished
+  they carry forward like any other task rather than duplicating.
+- **Rolling multi-day scheduler** - builds an hourly schedule from due
+  routines and goal deep-work tasks, bin-packing each hour by task duration
+  (multiple short tasks share an hour). When a hour's full, tasks roll
+  forward across the *rest of the day* instead of piling into one slot -
+  and if the whole day is full, they roll into tomorrow, which is created
+  and bin-packed the same way. Respects your current energy mode.
+- **End-of-day rollover** - when you check in on a new calendar day,
+  anything left unfinished from before rolls forward automatically
+  (dependency order and bin-packing preserved). The one exception: a missed
+  *daily* routine (brush teeth, meds) is marked missed in its history
+  instead of duplicating - tomorrow's instance shows up normally, once.
+- **Backlog view** - `[b]acklog` lists everything pushed forward today
+  (with why - skip, dependency push, hour drift, or end-of-day rollover),
+  what's already lined up for tomorrow, and what's coming later this week.
 - **Add task** - `[a]dd task` offers two ways to fill the current hour: add a
   brand-new manual task (name/duration/goal), or pull an already-scheduled
   later task forward into now. Both reflow the schedule and preserve
