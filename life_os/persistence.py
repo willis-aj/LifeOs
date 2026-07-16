@@ -5,7 +5,7 @@ Every player gets an isolated directory under `config.PLAYERS_DIR`:
 
     players/<player_id>/meta.json           -> {"name": ..., "created_at": ...}
     players/<player_id>/player_state.json    -> single PlayerState
-    players/<player_id>/tasks.json            -> list[Task]  (today's schedule)
+    players/<player_id>/tasks.json            -> {ISO date: list[Task]}  (multi-day schedule)
     players/<player_id>/goal_progress.json     -> list[Goal]
     players/<player_id>/routines.json           -> list[Routine]
 
@@ -125,18 +125,19 @@ def load_player_state(player_id: str) -> PlayerState:
 
 
 # ---------------------------------------------------------------------------
-# Tasks (today's schedule)
+# Schedule (multi-day: ISO date string -> list of Task)
 # ---------------------------------------------------------------------------
 
-def save_tasks(player_id: str, tasks: List[Task]) -> None:
-    _write_json(_player_path(player_id, config.TASKS_FILE), [t.to_dict() for t in tasks])
+def save_schedule(player_id: str, schedule: Dict[str, List[Task]]) -> None:
+    payload = {date_key: [t.to_dict() for t in tasks] for date_key, tasks in schedule.items() if tasks}
+    _write_json(_player_path(player_id, config.TASKS_FILE), payload)
 
 
-def load_tasks(player_id: str) -> Optional[List[Task]]:
+def load_schedule(player_id: str) -> Dict[str, List[Task]]:
     data = _read_json(_player_path(player_id, config.TASKS_FILE))
-    if data is None:
-        return None
-    return [Task.from_dict(d) for d in data]
+    if not isinstance(data, dict):
+        return {}
+    return {date_key: [Task.from_dict(d) for d in items] for date_key, items in data.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ def _default_routines() -> List[Routine]:
             boss=r.get("boss", False),
             interval_days=r.get("interval_days"),
             requires=list(r.get("requires", [])),
+            is_scheduling_task=r.get("is_scheduling_task", False),
         )
         for r in config.ROUTINES
     ]
