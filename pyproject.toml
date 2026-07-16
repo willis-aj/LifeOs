@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "life-os"
+version = "0.1.0"
+description = "A gamified, adaptive, hourly check-in personal productivity engine."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "LifeOS" }]
+dependencies = []
+
+[project.scripts]
+life-os = "life_os.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["life_os*"]
