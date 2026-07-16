@@ -7,6 +7,7 @@ Run with:
 
 from __future__ import annotations
 
+import calendar
 import datetime
 from typing import List, Optional
 
@@ -15,8 +16,14 @@ from .engine import LifeOSEngine
 from .models import Task
 
 DIVIDER = "-" * 60
-ACTIONS_HELP = "[c]omplete  [s]kip  [m]ode  [g]oals  [e]dit goals  [i]nventory  [r]eset  [p]layer  [q]uit"
-IDLE_ACTIONS_HELP = "[m]ode  [g]oals  [e]dit goals  [i]nventory  [r]eset  [p]layer  [q]uit"
+ACTIONS_HELP = (
+    "[c]omplete  [s]kip  [a]dd task  [d]ay view  [month]  [m]ode  "
+    "[g]oals  [e]dit goals  [i]nventory  [r]eset  [p]layer  [h]ome  [q]uit"
+)
+IDLE_ACTIONS_HELP = (
+    "[a]dd task  [d]ay view  [month]  [m]ode  [g]oals  [e]dit goals  "
+    "[i]nventory  [r]eset  [p]layer  [h]ome  [q]uit"
+)
 
 
 def _format_hour(hour: int) -> str:
@@ -85,15 +92,20 @@ def _select_player() -> str:
 # Display helpers
 # ---------------------------------------------------------------------------
 
+def _mode_label(engine: LifeOSEngine) -> str:
+    if engine.state.chaos_mode:
+        return "Chaos Mode"
+    if engine.state.comfort_mode:
+        return "Comfort Mode"
+    return config.ENERGY_MODES[engine.state.energy_mode]["label"]
+
+
 def _print_header(engine: LifeOSEngine) -> None:
     progress = engine.level_progress()
-    mode = "Chaos Mode" if engine.state.chaos_mode else (
-        "Comfort Mode" if engine.state.comfort_mode else config.ENERGY_MODES[engine.state.energy_mode]["label"]
-    )
     print(DIVIDER)
     print(f"LifeOS  |  {engine.player_name}  |  Level {progress['level']}  ({progress['xp_into_level']}/{progress['xp_to_next']} XP)")
     print(f"Streak: {engine.state.streak_days} day(s)  |  Longest: {engine.state.longest_streak}")
-    print(f"Mode: {mode}  |  Boss fights won: {engine.state.boss_fights_won}")
+    print(f"Mode: {_mode_label(engine)}  |  Boss fights won: {engine.state.boss_fights_won}")
     print(DIVIDER)
 
 
@@ -106,6 +118,24 @@ def _print_task(engine: LifeOSEngine, task: Task) -> None:
         line += f"  (locked: {reason})"
     print(line)
     print(f"   Goal: {task.goal}  |  Duration: {task.duration_minutes} min  |  XP: {task.xp}")
+
+
+def _print_hour_cluster(engine: LifeOSEngine, hour: int, tasks: List[Task]) -> None:
+    """Show every task sharing this hour before drilling into each one."""
+    print(f"\n{_format_hour(hour)}")
+    if not tasks:
+        print(" (nothing scheduled)")
+        return
+    for t in tasks:
+        tag = " [BOSS]" if t.boss else ""
+        note = ""
+        if t.completed:
+            note = "  (done)"
+        elif t.skipped:
+            note = "  (skipped)"
+        elif t.locked:
+            note = f"  (locked: {engine.lock_reason(t)})"
+        print(f" - {t.label}{tag} ({t.duration_minutes} min){note}")
 
 
 def _print_result(result: dict) -> None:
@@ -127,8 +157,8 @@ def _print_result(result: dict) -> None:
         print(f"   Boss defeated! Total boss fights won: {result['boss_fights_won']}")
 
 
-def _mode_menu(engine: LifeOSEngine) -> None:
-    print("\nModes: [1] low  [2] normal  [3] high  [4] toggle chaos  [5] toggle comfort  [b]ack")
+def _mode_menu(engine: LifeOSEngine) -> Optional[str]:
+    print("\nModes: [1] low  [2] normal  [3] high  [4] toggle chaos  [5] toggle comfort  [b]ack  [h]ome")
     choice = _prompt("Choose: ")
     if choice == "1":
         engine.set_energy_mode("low")
@@ -142,10 +172,13 @@ def _mode_menu(engine: LifeOSEngine) -> None:
     elif choice == "5":
         now_on = engine.toggle_comfort_mode()
         print("Comfort Mode " + ("enabled." if now_on else "disabled."))
+    elif choice == "h":
+        return "home"
     elif choice == "b":
-        return
+        return None
     else:
         print("Unrecognized option.")
+    return None
 
 
 def _goals_menu(engine: LifeOSEngine) -> None:
@@ -164,18 +197,21 @@ def _inventory_menu(engine: LifeOSEngine) -> None:
         print(f"  - {item_id}")
 
 
-def _reset_menu(engine: LifeOSEngine) -> bool:
-    """Returns True if a reset actually happened."""
+def _reset_menu(engine: LifeOSEngine) -> Optional[str]:
+    """Returns "restart" if a reset actually happened, "home" if the user
+    bailed out via the universal home command, or None if cancelled."""
     print("\nThis wipes XP, streak, inventory, boss fights, companion choice,")
     print("season progress, and task/routine history for this player.")
     print("Goal and routine definitions are kept.")
-    confirm = _prompt("Type 'yes' to confirm reset, anything else to cancel: ")
+    confirm = _prompt("Type 'yes' to confirm reset, 'h' for home, anything else to cancel: ")
     if confirm == "yes":
         engine.reset_player()
         print("Player reset. Starting fresh.")
-        return True
+        return "restart"
+    if confirm == "h":
+        return "home"
     print("Reset cancelled.")
-    return False
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -202,10 +238,10 @@ def _resolve_goal_id(engine: LifeOSEngine, raw: str) -> Optional[str]:
     return None
 
 
-def _edit_goals_menu(engine: LifeOSEngine) -> None:
+def _edit_goals_menu(engine: LifeOSEngine) -> Optional[str]:
     while True:
         _print_goal_list(engine)
-        print("\n[a]dd  [r]emove  [n]ame (rename)  [x] base xp/task  [m]ilestones  [b]ack")
+        print("\n[a]dd  [r]emove  [n]ame (rename)  [x] base xp/task  [m]ilestones  [b]ack  [h]ome")
         choice = _prompt("Choose: ")
 
         if choice == "a":
@@ -274,10 +310,121 @@ def _edit_goals_menu(engine: LifeOSEngine) -> None:
             except ValueError as exc:
                 print(f"Error: {exc}")
 
+        elif choice == "h":
+            return "home"
         elif choice in ("b", "q"):
-            return
+            return None
         else:
             print("Unrecognized option.")
+
+
+# ---------------------------------------------------------------------------
+# Add task (manual entry or pulling a later task forward)
+# ---------------------------------------------------------------------------
+
+def _add_manual_task_flow(engine: LifeOSEngine) -> None:
+    label = _prompt_raw("Task name: ")
+    if not label:
+        print("Task name cannot be empty.")
+        return
+    duration_raw = _prompt("Duration in minutes: ").strip()
+    if not duration_raw.isdigit() or int(duration_raw) <= 0:
+        print("Duration must be a positive whole number of minutes.")
+        return
+    duration = int(duration_raw)
+
+    _print_goal_list(engine)
+    goal_raw = _prompt("Goal number or id (blank for default): ").strip()
+    goal_id = _resolve_goal_id(engine, goal_raw) if goal_raw else None
+
+    task = engine.add_manual_task(label, duration, goal_id)
+    print(f"Added '{task.label}' at {_format_hour(task.scheduled_hour)} ({task.duration_minutes} min).")
+
+
+def _pull_task_forward_flow(engine: LifeOSEngine) -> None:
+    candidates = engine.later_today_tasks()
+    if not candidates:
+        print("Nothing scheduled later today to pull forward.")
+        return
+
+    print("\nTasks later today:")
+    for i, t in enumerate(candidates, start=1):
+        tag = " [BOSS]" if t.boss else ""
+        lock_note = f"  (locked: {engine.lock_reason(t)})" if t.locked else ""
+        print(f"  {i}. [{_format_hour(t.scheduled_hour)}] {t.label}{tag} ({t.duration_minutes} min){lock_note}")
+
+    raw = _prompt("Number to pull forward (blank to cancel): ").strip()
+    if not raw:
+        return
+    if not raw.isdigit() or not (1 <= int(raw) <= len(candidates)):
+        print("Unrecognized option.")
+        return
+
+    chosen = candidates[int(raw) - 1]
+    engine.pull_task_forward(chosen)
+    print("Task pulled forward into the current hour.")
+
+
+def _add_task_menu(engine: LifeOSEngine) -> Optional[str]:
+    print("\n[a]dd task")
+    print("  1. Add a manual task")
+    print("  2. Pull a task forward from later today")
+    print("  [b]ack  [h]ome")
+    choice = _prompt("Choose: ")
+    if choice == "1":
+        _add_manual_task_flow(engine)
+    elif choice == "2":
+        _pull_task_forward_flow(engine)
+    elif choice == "h":
+        return "home"
+    elif choice == "b":
+        return None
+    else:
+        print("Unrecognized option.")
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Day / month views
+# ---------------------------------------------------------------------------
+
+def _print_day_view(engine: LifeOSEngine) -> None:
+    print("\n=== Today ===")
+    grouped = engine.day_view()
+    if not grouped:
+        print("Nothing scheduled today.")
+    for entry in grouped:
+        print(f"\n{_format_hour(entry['hour'])}")
+        for t in entry["tasks"]:
+            goal = engine.goal_by_id(t.goal)
+            goal_name = goal.name if goal else t.goal
+            tag = " [BOSS]" if t.boss else ""
+            bits = []
+            if t.completed:
+                bits.append("done")
+            elif t.skipped:
+                bits.append("skipped")
+            elif t.locked:
+                bits.append(f"locked: {engine.lock_reason(t)}")
+            status = f"  ({', '.join(bits)})" if bits else ""
+            print(f"  - {t.label}{tag} ({t.duration_minutes} min, {goal_name}, {t.xp} XP){status}")
+    print(f"\nMode: {_mode_label(engine)}")
+
+
+def _print_month_view(engine: LifeOSEngine) -> None:
+    view = engine.month_view()
+    month_name = calendar.month_name[view["month"]]
+    print(f"\n=== {month_name} {view['year']} ===")
+    events = view["events_by_day"]
+    if not events:
+        print("No recurring events projected this month.")
+    else:
+        for day in sorted(events):
+            for label in events[day]:
+                print(f"{day} — {label}")
+    print("\nActive goals:")
+    for g in view["goals"]:
+        print(f"  - {g['name']}: level {g['level']}, {g['xp']} XP")
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +432,10 @@ def _edit_goals_menu(engine: LifeOSEngine) -> None:
 # ---------------------------------------------------------------------------
 
 def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
-    """Returns "restart" if the schedule was reset out from under us,
-    "switch" if the user wants to change players, or None otherwise."""
+    """Returns "restart" after a player reset, "rescheduled" after a
+    dependency-triggered reschedule, "home" for the universal home command,
+    "switch" to change players, or None once the task itself has been
+    resolved (or the user backs out having only touched a side menu)."""
     _print_task(engine, task)
     while True:
         action = _prompt(f"{ACTIONS_HELP}: ")
@@ -297,11 +446,27 @@ def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
                 continue
             return None
         if action == "s":
-            engine.skip_task(task)
+            message = engine.skip_task(task)
+            if message:
+                print(f"   {message}")
+                return "rescheduled"
             print("   Skipped.")
             return None
+        if action == "a":
+            signal = _add_task_menu(engine)
+            if signal:
+                return signal
+            continue
+        if action == "d":
+            _print_day_view(engine)
+            continue
+        if action == "month":
+            _print_month_view(engine)
+            continue
         if action == "m":
-            _mode_menu(engine)
+            signal = _mode_menu(engine)
+            if signal:
+                return signal
             _print_header(engine)
             _print_task(engine, task)
             continue
@@ -309,17 +474,22 @@ def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
             _goals_menu(engine)
             continue
         if action == "e":
-            _edit_goals_menu(engine)
+            signal = _edit_goals_menu(engine)
+            if signal:
+                return signal
             continue
         if action == "i":
             _inventory_menu(engine)
             continue
         if action == "r":
-            if _reset_menu(engine):
-                return "restart"
+            signal = _reset_menu(engine)
+            if signal:
+                return signal
             continue
         if action == "p":
             return "switch"
+        if action == "h":
+            return "home"
         if action == "q":
             raise SystemExit(0)
         print("Unrecognized option.")
@@ -333,66 +503,66 @@ def _play_session(engine: LifeOSEngine) -> str:
 
     while True:
         _print_header(engine)
-        current_hour = datetime.datetime.now().hour
-        due_now = engine.hour_tasks(current_hour)
+
+        moved_overdue = engine.reflow_overdue_tasks()
+        if moved_overdue:
+            print("\nUnfinished tasks detected — moving them to the current hour.")
+
+        view = engine.home_view()
+        current_hour = view["hour"]
+        due_now = view["tasks"]
 
         if due_now:
-            for task in due_now:
-                signal = _handle_task(engine, task)
-                if signal in ("restart", "switch"):
-                    break
-            if signal == "switch":
-                return "switch"
-            # "restart" or falling through: loop back and re-fetch fresh state
-            continue
-
-        upcoming = engine.current_task()
-        if upcoming is None:
-            print("\nAll tasks handled for today. Great work!")
-            action = _prompt(f"{IDLE_ACTIONS_HELP}: ")
-            if action == "m":
-                _mode_menu(engine)
-            elif action == "g":
-                _goals_menu(engine)
-            elif action == "e":
-                _edit_goals_menu(engine)
-            elif action == "i":
-                _inventory_menu(engine)
-            elif action == "r":
-                _reset_menu(engine)
-            elif action == "p":
-                return "switch"
-            elif action == "q":
-                raise SystemExit(0)
-            else:
-                print("Unrecognized option.")
-            continue
-
-        print(f"\nNothing scheduled this hour. Next up at {_format_hour(upcoming.scheduled_hour)}:")
-        _print_task(engine, upcoming)
-        action = _prompt(f"[c]omplete now  [s]kip  [m]ode  [g]oals  [e]dit goals  [i]nventory  [r]eset  [p]layer  [q]uit: ")
-        if action == "c":
-            result = engine.complete_task(upcoming)
-            _print_result(result)
-        elif action == "s":
-            engine.skip_task(upcoming)
-            print("   Skipped.")
-        elif action == "m":
-            _mode_menu(engine)
-        elif action == "g":
-            _goals_menu(engine)
-        elif action == "e":
-            _edit_goals_menu(engine)
-        elif action == "i":
-            _inventory_menu(engine)
-        elif action == "r":
-            _reset_menu(engine)
-        elif action == "p":
-            return "switch"
-        elif action == "q":
-            raise SystemExit(0)
+            target_hour = current_hour
+            cluster = due_now
         else:
-            print("Unrecognized option.")
+            upcoming = engine.current_task()
+            if upcoming is None:
+                print("\nAll tasks handled for today. Great work!")
+                action = _prompt(f"{IDLE_ACTIONS_HELP}: ")
+                if action == "a":
+                    _add_task_menu(engine)
+                elif action == "d":
+                    _print_day_view(engine)
+                elif action == "month":
+                    _print_month_view(engine)
+                elif action == "m":
+                    _mode_menu(engine)
+                elif action == "g":
+                    _goals_menu(engine)
+                elif action == "e":
+                    _edit_goals_menu(engine)
+                elif action == "i":
+                    _inventory_menu(engine)
+                elif action == "r":
+                    _reset_menu(engine)
+                elif action == "p":
+                    return "switch"
+                elif action == "h":
+                    pass
+                elif action == "q":
+                    raise SystemExit(0)
+                else:
+                    print("Unrecognized option.")
+                continue
+
+            target_hour = upcoming.scheduled_hour
+            cluster = engine.hour_tasks(target_hour)
+            print(f"\nNothing scheduled this hour. Next up at {_format_hour(target_hour)}:")
+
+        _print_hour_cluster(engine, target_hour, cluster)
+
+        signal = None
+        for task in cluster:
+            if task.completed or task.skipped or task.scheduled_hour != target_hour:
+                continue
+            signal = _handle_task(engine, task)
+            if signal in ("restart", "switch", "rescheduled", "home"):
+                break
+
+        if signal == "switch":
+            return "switch"
+        continue
 
 
 def run() -> None:

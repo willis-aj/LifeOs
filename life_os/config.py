@@ -255,22 +255,25 @@ ESSENTIAL_ROUTINE_IDS = [
 # (skipped entirely in Comfort Mode).
 GOAL_TASKS_PER_DAY = 2
 
+# `hour_capacity_minutes` is the scheduler's bin-packing budget: as many
+# tasks as fit within that many minutes get placed in a given hour before
+# the scheduler overflows the rest into the next available hour.
 ENERGY_MODES: Dict[str, Dict[str, Any]] = {
     "low": {
         "label": "Low Energy",
-        "max_tasks_per_hour": 1,
+        "hour_capacity_minutes": 30,
         "xp_multiplier": 1.2,  # reward showing up even when running on empty
         "task_duration_cap_minutes": 30,
     },
     "normal": {
         "label": "Normal",
-        "max_tasks_per_hour": 1,
+        "hour_capacity_minutes": 60,
         "xp_multiplier": 1.0,
         "task_duration_cap_minutes": 60,
     },
     "high": {
         "label": "High Energy",
-        "max_tasks_per_hour": 2,
+        "hour_capacity_minutes": 120,
         "xp_multiplier": 1.0,
         "task_duration_cap_minutes": 120,
     },
@@ -281,7 +284,7 @@ CHAOS_MODE = {
     "label": "Chaos Mode",
     "xp_multiplier": 1.5,
     "shuffle": True,
-    "max_tasks_per_hour": 3,
+    "hour_capacity_minutes": 150,
 }
 
 # Comfort Mode: low pressure, only essentials, generous XP so streaks survive.
@@ -289,7 +292,7 @@ COMFORT_MODE = {
     "label": "Comfort Mode",
     "xp_multiplier": 1.0,
     "only_essentials": True,
-    "max_tasks_per_hour": 1,
+    "hour_capacity_minutes": 30,
 }
 
 # ---------------------------------------------------------------------------

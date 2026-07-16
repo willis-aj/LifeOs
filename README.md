@@ -17,11 +17,32 @@ boss fights) on top so check-ins feel like progress instead of chores.
   more), config-driven.
 - **Task dependencies** - some routines require a prerequisite first (e.g.
   "Dinner with friends" requires "Schedule dinner with friends", "Cook
-  dinner" requires "Grocery shopping"). Gated tasks still show up on the
-  schedule but appear locked until their prerequisite is completed the same
-  day, and can't be completed for XP while locked.
+  dinner" requires "Grocery shopping"). Gated tasks show up locked until
+  their prerequisite is completed the same day. Skipping a prerequisite no
+  longer locks its dependent forever - it automatically reschedules the
+  skipped task to the next open hour and pushes its dependents later so
+  order is preserved across the day.
 - **Scheduler** - builds an hourly schedule for today from due routines and
-  goal deep-work tasks, respecting your current energy mode.
+  goal deep-work tasks, bin-packing each hour by task duration (multiple
+  short tasks share an hour; anything that doesn't fit overflows to the
+  next), respecting your current energy mode.
+- **Add task** - `[a]dd task` offers two ways to fill the current hour: add a
+  brand-new manual task (name/duration/goal), or pull an already-scheduled
+  later task forward into now. Both reflow the schedule and preserve
+  dependency order and multi-task-per-hour bin-packing.
+- **Auto-push overdue tasks** - if an hour passes without a task being
+  completed or skipped, LifeOS automatically pushes it into the current
+  hour the next time you check in (reflowing forward as needed) rather than
+  leaving it stranded in the past - this applies uniformly to routines,
+  manual tasks, boss fights, and prerequisite/dependent tasks.
+- **Universal home command** - `[h]ome` is available from every menu and
+  submenu (mode, goals, edit goals, inventory, reset, add task) and jumps
+  straight back to the main screen - header, current mode, and the current
+  hour's tasks - without disturbing the schedule or your place in it.
+- **Day view / month view** - `[d]ay view` shows every scheduled hour today
+  with duration, goal, XP, and dependency status; `[month]` projects boss
+  fights, routines, and other non-daily events across the current calendar
+  month alongside a summary of your active goals.
 - **Energy modes** - `low`, `normal`, `high`, plus two special modes:
   - **Chaos Mode**: shuffles the schedule, allows more tasks per hour, pays
     out bonus XP - for unpredictable days.

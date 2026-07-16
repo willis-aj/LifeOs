@@ -11,8 +11,11 @@ API.
 
 from __future__ import annotations
 
+import calendar
 import datetime
 import random
+import uuid
+import zlib
 from typing import Dict, List, Optional
 
 from . import config, gamification, persistence, scheduler
@@ -69,6 +72,147 @@ class LifeOSEngine:
 
     def refresh_locks(self) -> None:
         scheduler.apply_lock_state(self.tasks, self.routines, self.today)
+
+    def home_view(self) -> Dict:
+        """Snapshot for the main home screen: the current hour plus
+        whatever's scheduled in it. Used by the CLI's universal [h]ome
+        command to redraw the main screen from any submenu without
+        disturbing the schedule or task pointers."""
+        current_hour = datetime.datetime.now().hour
+        return {
+            "hour": current_hour,
+            "tasks": self.hour_tasks(current_hour),
+        }
+
+    def reflow_overdue_tasks(self) -> List[Task]:
+        """Detect any incomplete tasks left behind in past hours (the user
+        didn't get to them before the hour moved on) and push them into the
+        current hour, reflowing the rest of the day forward as needed.
+        Works the same regardless of whether the overdue task is a routine,
+        a manually-added task, a boss fight, or part of a dependency chain.
+        Returns the tasks that were moved (empty if nothing was overdue)."""
+        current_hour = datetime.datetime.now().hour
+        overdue = [
+            t for t in self.tasks
+            if not t.completed and not t.skipped and t.scheduled_hour < current_hour
+        ]
+        if not overdue:
+            return []
+        moved = scheduler.push_overdue_to_current_hour(self.tasks, overdue, current_hour, self.state)
+        self.refresh_locks()
+        self.save()
+        return moved
+
+    def later_today_tasks(self, hour: Optional[int] = None) -> List[Task]:
+        """Pending tasks scheduled strictly after the given (or current)
+        hour, in schedule order - candidates for pulling forward."""
+        hour = hour if hour is not None else datetime.datetime.now().hour
+        return sorted(
+            (t for t in self.tasks if not t.completed and not t.skipped and t.scheduled_hour > hour),
+            key=lambda t: t.scheduled_hour,
+        )
+
+    def pull_task_forward(self, task: Task, hour: Optional[int] = None) -> Task:
+        """Move a later task into the current (or given) hour, reflowing
+        the schedule and pulling any of its own unmet prerequisites forward
+        too so dependency order is preserved."""
+        target_hour = hour if hour is not None else datetime.datetime.now().hour
+        scheduler.pull_task_to_hour(self.tasks, task, target_hour, self.state)
+        self.refresh_locks()
+        self.save()
+        return task
+
+    def add_manual_task(
+        self,
+        label: str,
+        duration_minutes: int,
+        goal_id: Optional[str] = None,
+        xp: Optional[int] = None,
+        hour: Optional[int] = None,
+    ) -> Task:
+        """Manually insert an ad-hoc task into today's schedule, preferring
+        the given (or current) hour. Falls back to the first goal if none
+        is specified, since every task needs a goal to award XP against."""
+        label = label.strip()
+        if not label:
+            raise ValueError("Task label cannot be empty.")
+        if duration_minutes <= 0:
+            raise ValueError("Duration must be a positive number of minutes.")
+
+        goal = self.goal_by_id(goal_id) if goal_id else None
+        if goal is None:
+            goal = self.goals[0]
+
+        xp_value = xp if xp is not None else max(5, round(duration_minutes / 3))
+        target_hour = hour if hour is not None else datetime.datetime.now().hour
+
+        task = Task(
+            id=f"manual-{self.today.isoformat()}-{uuid.uuid4().hex[:8]}",
+            label=label,
+            goal=goal.id,
+            scheduled_hour=target_hour,
+            duration_minutes=duration_minutes,
+            xp=xp_value,
+            boss=False,
+            source_routine_id=None,
+        )
+        scheduler.insert_task(self.tasks, task, target_hour, self.state)
+        self.refresh_locks()
+        self.save()
+        return task
+
+    def day_view(self) -> List[Dict]:
+        """Group today's tasks by hour for a full-day overview."""
+        by_hour: Dict[int, List[Task]] = {}
+        for t in self.tasks:
+            by_hour.setdefault(t.scheduled_hour, []).append(t)
+        return [{"hour": h, "tasks": by_hour[h]} for h in sorted(by_hour)]
+
+    def month_view(self, year: Optional[int] = None, month: Optional[int] = None) -> Dict:
+        """Project recurring routines onto a calendar month so the CLI can
+        show a month-at-a-glance of boss fights, social/medical events,
+        raids, journaling, and other non-daily routines. Each routine lands
+        on a deterministic (id-derived) day each cycle, since routines don't
+        track an explicit calendar anchor - it's a stable approximation, not
+        an exact prediction."""
+        year = year or self.today.year
+        month = month or self.today.month
+        days_in_month = calendar.monthrange(year, month)[1]
+
+        events_by_day: Dict[int, List[str]] = {}
+
+        def add_event(day: int, label: str) -> None:
+            if 1 <= day <= days_in_month:
+                events_by_day.setdefault(day, []).append(label)
+
+        for routine in self.routines:
+            if routine.frequency == "daily":
+                continue
+            routine_hash = zlib.crc32(routine.id.encode("utf-8"))
+            if routine.frequency == "weekly":
+                anchor = 1 + (routine_hash % 7)
+                day = anchor
+                while day <= days_in_month:
+                    add_event(day, routine.label)
+                    day += 7
+            elif routine.frequency == "monthly":
+                anchor = 1 + (routine_hash % 28)
+                add_event(anchor, routine.label)
+            elif routine.frequency == "every_n_days":
+                interval = max(1, routine.interval_days or 1)
+                anchor = 1 + (routine_hash % interval)
+                day = anchor
+                while day <= days_in_month:
+                    add_event(day, routine.label)
+                    day += interval
+
+        return {
+            "year": year,
+            "month": month,
+            "days_in_month": days_in_month,
+            "events_by_day": events_by_day,
+            "goals": self.goal_progress(),
+        }
 
     def lock_reason(self, task: Task) -> Optional[str]:
         if not task.locked:
@@ -130,10 +274,30 @@ class LifeOSEngine:
         self.save()
         return result
 
-    def skip_task(self, task: Task) -> None:
+    def _dependents_of(self, task: Task) -> List[Task]:
+        if not task.source_routine_id:
+            return []
+        return [
+            t for t in self.tasks
+            if not t.completed and task.source_routine_id in t.dependencies
+        ]
+
+    def skip_task(self, task: Task) -> Optional[str]:
+        """Skip a task. If other tasks depend on it, don't abandon it -
+        reschedule it (and cascade-push its dependents) later in the day
+        instead. Returns a message describing what happened when a
+        reschedule occurred, or None for a plain skip."""
+        dependents = self._dependents_of(task)
+        if dependents:
+            scheduler.reschedule_after_skip(self.tasks, task, self.state, self.today)
+            self.refresh_locks()
+            self.save()
+            return "Prerequisite skipped — rescheduling it and pushing dependent tasks later."
+
         task.skipped = True
         self.state.tasks_skipped_total += 1
         self.save()
+        return None
 
     # ------------------------------------------------------------------
     # Mode switching
