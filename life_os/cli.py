@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import calendar
 import datetime
-from typing import List, Optional
+import textwrap
+from typing import Dict, List, Optional
 
 from . import config, persistence
 from .engine import LifeOSEngine
@@ -71,17 +72,53 @@ def _parse_int_list(raw: str) -> Optional[List[int]]:
 # Player selection
 # ---------------------------------------------------------------------------
 
-def _select_player() -> str:
+def _delete_player_flow(players: List[dict]) -> None:
+    """Prompt for which player to delete and confirm before deleting.
+    Purely a side-effecting action - the caller re-fetches the player list
+    afterward, so this never returns anything to load."""
+    print("\nDelete which player?")
+    for i, p in enumerate(players, start=1):
+        print(f"  {i}. {p['name']}")
+    print("  [b]ack")
+    raw = _prompt("Choose: ")
+    if raw in ("b", "", "q"):
+        return
+    if not raw.isdigit() or not (1 <= int(raw) <= len(players)):
+        print("Unrecognized option.")
+        return
+
+    target = players[int(raw) - 1]
+    print(f"\nAre you sure you want to delete '{target['name']}' and all their data?")
+    confirm = _prompt("[y]es  [n]o: ")
+    if confirm != "y":
+        print("Cancelled.")
+        return
+
+    LifeOSEngine.delete_player(target["id"])
+    print(f"Deleted '{target['name']}'.")
+
+
+def _select_player() -> Optional[str]:
+    """Returns a player_id to load, or None if the player list became
+    empty (e.g. the last player was just deleted) - the caller should fall
+    through to the first-run "create a player" flow in that case."""
     while True:
         players = persistence.list_players()
+        if not players:
+            return None
+
         print("\nSelect player:")
         for i, p in enumerate(players, start=1):
             print(f"  {i}. {p['name']}")
         print(f"  {len(players) + 1}. New player")
+        print("  [x] delete player")
 
         choice = _prompt("Choose: ")
         if choice in ("q", "quit", "exit"):
             raise SystemExit(0)
+        if choice == "x":
+            _delete_player_flow(players)
+            continue
         if choice.isdigit():
             idx = int(choice)
             if 1 <= idx <= len(players):
@@ -143,6 +180,13 @@ def _print_hour_cluster(engine: LifeOSEngine, hour: int, tasks: List[Task]) -> N
         elif t.locked:
             note = f"  (locked: {engine.lock_reason(t)})"
         print(f" - {t.label}{tag} ({t.duration_minutes} min){note}")
+
+
+def _print_dependency_fixes(fixes: List[tuple]) -> None:
+    """Report any prerequisite tasks that had to be auto-inserted because a
+    dependent routine was due today while its own prerequisite wasn't."""
+    for prereq_label, dependent_label in fixes:
+        print(f"\nPrerequisite missing — adding {prereq_label.lower()} before {dependent_label.lower()}.")
 
 
 def _print_result(result: dict) -> None:
@@ -456,17 +500,52 @@ def _print_backlog(engine: LifeOSEngine) -> None:
             print("  " + _describe_task_line(engine, t))
 
 
+CAL_COL_WIDTH = 18
+CAL_CELL_LINES = 5  # day-number line + up to 4 wrapped task lines per box
+CAL_WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+def _wrap_calendar_cell(cell: Optional[Dict]) -> List[str]:
+    """Render one calendar day into exactly CAL_CELL_LINES lines: the date
+    number, then as many word-wrapped task labels as fit within the box,
+    with "+ more" on the last line if anything had to be cut off. Blank
+    (out-of-month) cells are just empty lines."""
+    if cell is None:
+        return [""] * CAL_CELL_LINES
+
+    lines = [str(cell["day"])]
+    wrapped: List[str] = []
+    for label in cell["labels"]:
+        wrapped.extend(textwrap.wrap(label, width=CAL_COL_WIDTH) or [""])
+
+    available = CAL_CELL_LINES - 1
+    if len(wrapped) > available:
+        wrapped = wrapped[: max(0, available - 1)] + ["+ more"]
+    lines.extend(wrapped)
+
+    while len(lines) < CAL_CELL_LINES:
+        lines.append("")
+    return lines[:CAL_CELL_LINES]
+
+
 def _print_month_view(engine: LifeOSEngine) -> None:
-    view = engine.month_view()
+    view = engine.month_calendar_view()
     month_name = calendar.month_name[view["month"]]
-    print(f"\n=== {month_name} {view['year']} ===")
-    events = view["events_by_day"]
-    if not events:
-        print("No recurring events projected this month.")
-    else:
-        for day in sorted(events):
-            for label in events[day]:
-                print(f"{day} — {label}")
+    print(f"\n=== {month_name} {view['year']} ===\n")
+
+    border = "+" + "+".join("-" * (CAL_COL_WIDTH + 2) for _ in range(7)) + "+"
+
+    print(border)
+    print("|" + "|".join(f" {h:<{CAL_COL_WIDTH}} " for h in CAL_WEEKDAY_HEADERS) + "|")
+    print(border)
+
+    for week in view["weeks"]:
+        cell_lines = [_wrap_calendar_cell(cell) for cell in week]
+        for line_idx in range(CAL_CELL_LINES):
+            row = "|" + "|".join(f" {cell_lines[col][line_idx]:<{CAL_COL_WIDTH}} " for col in range(7)) + "|"
+            print(row)
+        print(border)
+
     print("\nActive goals:")
     for g in view["goals"]:
         print(f"  - {g['name']}: level {g['level']}, {g['xp']} XP")
@@ -514,21 +593,61 @@ def _offer_create_scheduled_event(engine: LifeOSEngine) -> None:
 # Task handling
 # ---------------------------------------------------------------------------
 
+def _select_task_to_complete(engine: LifeOSEngine, tasks: List[Task]) -> Optional[Task]:
+    """Show a numbered menu of the tasks sharing an hour and let the user
+    pick which one to complete. Returns None if the user backs out."""
+    print("\nTasks this hour:")
+    for i, t in enumerate(tasks, start=1):
+        tag = " [BOSS]" if t.boss else ""
+        lock_note = f"  (locked: {engine.lock_reason(t)})" if t.locked else ""
+        print(f"  {i}. {t.label}{tag} ({t.duration_minutes} min, {t.xp} XP){lock_note}")
+    while True:
+        raw = _prompt("Choose which task to complete (blank to cancel): ").strip()
+        if not raw or raw in ("q", "b"):
+            return None
+        if raw.isdigit() and 1 <= int(raw) <= len(tasks):
+            return tasks[int(raw) - 1]
+        print("Unrecognized option.")
+
+
+def _finish_completion(engine: LifeOSEngine, result: dict) -> bool:
+    """Print a completion result and offer scheduled-event creation if
+    relevant. Returns True if the task was actually completed (False if it
+    turned out to be locked, in which case nothing happened)."""
+    _print_result(result)
+    if result.get("locked"):
+        return False
+    if result.get("scheduling_task_completed"):
+        _offer_create_scheduled_event(engine)
+    return True
+
+
 def _handle_task(engine: LifeOSEngine, task: Task) -> Optional[str]:
     """Returns "restart" after a player reset, "rescheduled" after a
-    dependency-triggered reschedule, "home" for the universal home command,
-    "switch" to change players, or None once the task itself has been
-    resolved (or the user backs out having only touched a side menu)."""
+    dependency-triggered reschedule, "refresh" after completing a task
+    chosen from the multi-task selection menu, "home" for the universal
+    home command, "switch" to change players, or None once the task itself
+    has been resolved (or the user backs out having only touched a side
+    menu)."""
     _print_task(engine, task)
     while True:
         action = _prompt(f"{ACTIONS_HELP}: ")
         if action == "c":
+            hour_siblings = [
+                t for t in engine.tasks
+                if t.scheduled_hour == task.scheduled_hour and not t.completed and not t.skipped
+            ]
+            if len(hour_siblings) > 1:
+                chosen = _select_task_to_complete(engine, hour_siblings)
+                if chosen is None:
+                    continue
+                result = engine.complete_specific_task(chosen.id)
+                if not _finish_completion(engine, result):
+                    continue
+                return "refresh"
             result = engine.complete_task(task)
-            _print_result(result)
-            if result.get("locked"):
+            if not _finish_completion(engine, result):
                 continue
-            if result.get("scheduling_task_completed"):
-                _offer_create_scheduled_event(engine)
             return None
         if action == "s":
             message = engine.skip_task(task)
@@ -597,6 +716,10 @@ def _play_session(engine: LifeOSEngine) -> str:
                 f"\nNew day detected ({rollover['days_advanced']} {day_word} passed) - "
                 f"rolled {rollover['carried_count']} unfinished task(s) forward."
             )
+        _print_dependency_fixes(rollover.get("dependency_fixes", []))
+
+        dependency_fixes = engine.reconcile_dependencies()
+        _print_dependency_fixes(dependency_fixes)
 
         _print_header(engine)
 
@@ -655,7 +778,7 @@ def _play_session(engine: LifeOSEngine) -> str:
             if task.completed or task.skipped or task.scheduled_hour != target_hour:
                 continue
             signal = _handle_task(engine, task)
-            if signal in ("restart", "switch", "rescheduled", "home"):
+            if signal in ("restart", "switch", "rescheduled", "home", "refresh"):
                 break
 
         if signal == "switch":
@@ -663,10 +786,28 @@ def _play_session(engine: LifeOSEngine) -> str:
         continue
 
 
+def _create_first_player() -> LifeOSEngine:
+    print("No players found. Create a new player:")
+    name = _prompt_raw("Enter player name: ")
+    while not name:
+        print("Name cannot be empty.")
+        name = _prompt_raw("Enter player name: ")
+    return LifeOSEngine.create_new_player(name)
+
+
 def run() -> None:
     while True:
-        player_id = _select_player()
-        engine = LifeOSEngine(player_id)
+        if not persistence.has_players():
+            engine = _create_first_player()
+        else:
+            player_id = _select_player()
+            if player_id is None:
+                # The player list emptied out (e.g. the last player was
+                # just deleted) - loop back and let the first-run branch
+                # above handle it on the next iteration.
+                continue
+            engine = LifeOSEngine(player_id)
+        _print_dependency_fixes(engine.last_dependency_fixes)
         signal = _play_session(engine)
         if signal != "switch":
             break
