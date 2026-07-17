@@ -21,7 +21,11 @@ boss fights) on top so check-ins feel like progress instead of chores.
   their prerequisite is completed the same day. Skipping a prerequisite no
   longer locks its dependent forever - it automatically reschedules the
   skipped task to the next open hour and pushes its dependents later so
-  order is preserved across the day.
+  order is preserved across the day. If a dependent routine is due on a day
+  its own prerequisite isn't (different cadences), LifeOS auto-inserts the
+  missing prerequisite at the earliest open slot (rolling to tomorrow if
+  today's full) and tells you: `Prerequisite missing — adding grocery
+  shopping before cook dinner.`
 - **Scheduling tasks -> real events** - completing a "scheduling"-type task
   (Schedule raid, Schedule dinner with friends, RSVP to junk journaling,
   Schedule friend game night, Schedule medical appointment, Schedule
@@ -58,10 +62,14 @@ boss fights) on top so check-ins feel like progress instead of chores.
   submenu (mode, goals, edit goals, inventory, reset, add task) and jumps
   straight back to the main screen - header, current mode, and the current
   hour's tasks - without disturbing the schedule or your place in it.
-- **Day view / month view** - `[d]ay view` shows every scheduled hour today
-  with duration, goal, XP, and dependency status; `[month]` projects boss
-  fights, routines, and other non-daily events across the current calendar
-  month alongside a summary of your active goals.
+- **Day view / month calendar** - `[d]ay view` shows every scheduled hour
+  today with duration, goal, XP, and dependency status; `[month]` renders a
+  true 7-column (Sun-Sat) ASCII calendar grid for the current month, with
+  each day in its own bordered box. Task/event text word-wraps inside the
+  box and never spills into neighboring days; a box that fills up shows
+  "+ more" instead of overflowing. Covers boss fights, routines, and
+  one-off scheduled events alike, plus a summary of your active goals
+  underneath.
 - **Energy modes** - `low`, `normal`, `high`, plus two special modes:
   - **Chaos Mode**: shuffles the schedule, allows more tasks per hour, pays
     out bonus XP - for unpredictable days.
@@ -71,13 +79,22 @@ boss fights) on top so check-ins feel like progress instead of chores.
   fights (for the big/important routines), seasonal expansions, and a
   companion with its own personality and encouragement lines.
 - **Multi-player** - each player gets an isolated save under `players/<id>/`.
-  The CLI prompts for a player at startup and lets you switch players
-  mid-session without restarting the process.
+  If no players exist yet, the CLI skips straight to "Enter player name"
+  instead of showing an empty selection menu. Once at least one exists, the
+  CLI prompts you to pick a player at startup, lets you switch players
+  mid-session without restarting the process, and offers `[x] delete
+  player` right from that same screen (with a "Are you sure?" confirmation)
+  to permanently remove a player and all their data. Deleting the last
+  remaining player drops straight back into the "no players found" flow.
 - **Player reset** - wipe XP, streak, inventory, boss fights, companion
   choice, season progress, and routine/task history back to a clean slate
   for a player, without touching goal or routine definitions.
 - **Hourly check-in CLI** - see what's due this hour, mark it complete or
   skip it, watch XP/loot/level-ups happen live, switch modes on the fly.
+  When an hour holds more than one task, `[c]omplete` shows a numbered menu
+  so you can pick exactly which one to finish - everything else in that
+  hour is left untouched. A single-task hour behaves exactly as before,
+  no menu needed.
 - **Local JSON persistence** - each player's state, today's tasks, goal
   progress, and routine due-dates are saved under `players/<id>/` between runs.
 
@@ -135,3 +152,29 @@ no code changes needed for day-to-day goal tweaks.
 The persistence layer is intentionally a thin JSON wrapper so a future sync
 backend (GitHub Issues/Projects, Notion databases, etc.) can be added
 without touching the scheduler, gamification, or CLI layers.
+
+## Player data safety (read before testing or automating anything here)
+
+`players/` holds real player data and must **never** be deleted, wiped, or
+"cleaned up" by tooling, scripts, or automated changes - not the whole
+directory, not an individual player's subdirectory, not a single JSON file
+inside one, and not via any bulk/blanket operation. The one exception is
+`persistence.delete_player(player_id)` / the CLI's `[x] delete player`
+option - a single, deliberate, confirmation-gated feature that deletes
+exactly one named player, refuses to operate on anything that doesn't
+resolve to a direct child of `PLAYERS_DIR`, and never touches `PLAYERS_DIR`
+itself. There must never be a separate "wipe all players" / bulk-cleanup
+function.
+
+If you need to create and discard players for testing (smoke tests,
+manual verification, CI, an agent making changes to this codebase):
+
+- Run test scripts from a separate scratch working directory so any
+  `players/` folder they create is physically distinct from this project's
+  real one, **or**
+- Use `config.TEST_PLAYERS_DIR` ("test_players/") as a sandbox, cleaned up
+  with `persistence.cleanup_test_players()` - the only deletion helper in
+  the codebase, and it is hard-coded to that directory alone.
+
+Never run a blanket `rm -rf players` (or equivalent) against this project
+directory under any circumstances.

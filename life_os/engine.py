@@ -22,7 +22,7 @@ import datetime
 import random
 import uuid
 import zlib
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from . import config, gamification, persistence, scheduler
 from . import routines as routines_mod
@@ -41,12 +41,33 @@ class LifeOSEngine:
         self.goals: List[Goal] = persistence.load_goals(player_id)
         self.routines: List[Routine] = persistence.load_routines(player_id)
         self.schedule: Dict[str, List[Task]] = persistence.load_schedule(player_id)
+        self.last_dependency_fixes: List[Tuple[str, str]] = []
 
         gamification.sync_season(self.state, self.today)
 
         scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
+        self.reconcile_dependencies()
         self.refresh_locks()
         self.save()
+
+    @classmethod
+    def create_new_player(cls, name: str, today: Optional[datetime.date] = None) -> "LifeOSEngine":
+        """Convenience for the CLI's first-run flow: create the player
+        directory and state files via persistence, then construct and
+        return a fully initialized engine for them - ready to show the
+        main home screen immediately."""
+        player_id = persistence.create_player(name)
+        return cls(player_id, today=today)
+
+    @staticmethod
+    def delete_player(player_id: str) -> None:
+        """Permanently delete a player and all of their data. This is a
+        thin, explicit wrapper around persistence.delete_player() - it
+        doesn't operate on `self` since the player being deleted might not
+        even be the one currently loaded (e.g. deleting someone else from
+        the player-selection screen). All of the actual safety checks live
+        in persistence.delete_player()."""
+        persistence.delete_player(player_id)
 
     # ------------------------------------------------------------------
     # Today's tasks - a view onto self.schedule
@@ -71,10 +92,28 @@ class LifeOSEngine:
         scheduler.build_daily_schedule(
             self.schedule, self.goals, self.routines, self.state, self.today, force=True
         )
+        self.reconcile_dependencies()
         persistence.save_schedule(self.player_id, self.schedule)
 
     def refresh_locks(self) -> None:
         scheduler.apply_lock_state(self.tasks, self.routines, self.today)
+
+    def reconcile_dependencies(self) -> List[Tuple[str, str]]:
+        """Ensure every dependency referenced by today's tasks actually has
+        a prerequisite task present somewhere in the schedule. A routine
+        can be due on a day its own prerequisite isn't (different
+        cadences), which would otherwise leave a dependent locked with no
+        way to ever unlock today. Inserts any missing prerequisite at the
+        earliest available slot (rolling to tomorrow if today's full) and
+        keeps the dependent ordered after it. Returns
+        (prerequisite_label, dependent_label) pairs for anything that had
+        to be fixed, so the caller can surface it to the user."""
+        fixes = scheduler.ensure_prerequisites_present(self.schedule, self.routines, self.state, self.today)
+        self.last_dependency_fixes = fixes
+        if fixes:
+            self.refresh_locks()
+            self.save()
+        return fixes
 
     def check_for_new_day(self) -> Dict:
         """Detect whether the real calendar date has advanced since this
@@ -99,6 +138,7 @@ class LifeOSEngine:
 
         gamification.sync_season(self.state, self.today)
         scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
+        summary["dependency_fixes"] = self.reconcile_dependencies()
         self.refresh_locks()
         self.save()
         return summary
@@ -339,6 +379,39 @@ class LifeOSEngine:
             "goals": self.goal_progress(),
         }
 
+    def month_calendar_view(self, year: Optional[int] = None, month: Optional[int] = None) -> Dict:
+        """Reshape month_view()'s data (routine projections + one-off
+        scheduled events, already covering multi-day schedules, tomorrow
+        overflow, and every routine type) into a Sunday-first calendar
+        grid: a list of weeks, each exactly 7 cells (None for padding days
+        outside the month), ready for the CLI's ASCII box renderer."""
+        base = self.month_view(year, month)
+        year, month = base["year"], base["month"]
+        days_in_month = base["days_in_month"]
+        events_by_day = base["events_by_day"]
+
+        # calendar.weekday() is Monday=0..Sunday=6; remap to Sunday=0..Saturday=6.
+        first_weekday = calendar.weekday(year, month, 1)
+        first_col = (first_weekday + 1) % 7
+
+        weeks: List[List[Optional[Dict]]] = []
+        week: List[Optional[Dict]] = [None] * first_col
+        for day in range(1, days_in_month + 1):
+            week.append({"day": day, "labels": events_by_day.get(day, [])})
+            if len(week) == 7:
+                weeks.append(week)
+                week = []
+        if week:
+            week.extend([None] * (7 - len(week)))
+            weeks.append(week)
+
+        return {
+            "year": year,
+            "month": month,
+            "weeks": weeks,
+            "goals": base["goals"],
+        }
+
     def lock_reason(self, task: Task) -> Optional[str]:
         if not task.locked:
             return None
@@ -401,6 +474,17 @@ class LifeOSEngine:
         self.refresh_locks()
         self.save()
         return result
+
+    def complete_specific_task(self, task_id: str) -> Dict:
+        """Complete exactly the task with this id - used when multiple
+        tasks share an hour and the user picks one from a selection menu.
+        Delegates to complete_task() so XP/streak/loot/boss/dependency
+        handling stays identical no matter how the task was chosen, and
+        every other task in the hour is left completely untouched."""
+        task = scheduler.find_task_by_id(self.schedule, task_id)
+        if task is None:
+            raise ValueError(f"No such task '{task_id}'.")
+        return self.complete_task(task)
 
     def _dependents_of(self, task: Task) -> List[Task]:
         if not task.source_routine_id:
@@ -554,6 +638,7 @@ class LifeOSEngine:
         gamification.sync_season(self.state, self.today)
         self.schedule = {}
         scheduler.build_daily_schedule(self.schedule, self.goals, self.routines, self.state, self.today)
+        self.reconcile_dependencies()
         self.refresh_locks()
         self.save()
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import datetime
 import random
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from . import config
 from .models import Goal, PlayerState, Routine, Task
@@ -127,6 +127,63 @@ def apply_lock_state(tasks: List[Task], routines: List[Routine], today: datetime
             task.locked = is_locked(task.dependencies, routines_by_id, today)
         else:
             task.locked = False
+
+
+def ensure_prerequisites_present(
+    schedule: Dict[str, List[Task]], routines: List[Routine], state: PlayerState, today: datetime.date
+) -> List[Tuple[str, str]]:
+    """Guarantee every dependency referenced by a task in today's schedule
+    actually has a prerequisite task present somewhere in the schedule.
+
+    A routine can be due today while its own prerequisite isn't (different
+    cadences) - `due_routines` has no idea the two are linked, so a
+    dependent like "Cook dinner" could otherwise appear with "Grocery
+    shopping" nowhere on the schedule, leaving it locked with no way to
+    ever unlock. For anything missing, this synthesizes the prerequisite
+    task, inserts it at the earliest available slot today (rolling to
+    tomorrow if today's full, via the same bin-packing `place_task` uses
+    everywhere else), and pushes the dependent to occur no earlier than
+    it. Works the same regardless of whether the dependent is a daily
+    routine, a manual task, a pulled-forward task, a scheduled event, or a
+    boss fight - dependencies are just a list of routine ids on the Task.
+
+    Returns (prerequisite_label, dependent_label) pairs for anything that
+    had to be fixed, so the caller can tell the user about it.
+    """
+    today_key = _date_key(today)
+    today_tasks = schedule.get(today_key, [])
+    routines_by_id = {r.id: r for r in routines}
+    capacity = _hour_capacity(state)
+    settings = _mode_settings(state)
+    xp_multiplier = settings.get("xp_multiplier", 1.0)
+
+    known_source_ids = {
+        t.source_routine_id for day_tasks in schedule.values() for t in day_tasks if t.source_routine_id
+    }
+
+    fixes: List[Tuple[str, str]] = []
+
+    for dependent in list(today_tasks):
+        if dependent.completed or not dependent.dependencies:
+            continue
+        for dep_id in dependent.dependencies:
+            if dep_id in known_source_ids:
+                continue
+            dep_routine = routines_by_id.get(dep_id)
+            if dep_routine is None:
+                continue
+
+            prereq_task = _routine_to_task(dep_routine, today, xp_multiplier)
+            place_task(schedule, prereq_task, today, config.DAY_START_HOUR, capacity)
+            known_source_ids.add(dep_id)
+            fixes.append((dep_routine.label, dependent.label))
+
+            prereq_date = datetime.date.fromisoformat(prereq_task.scheduled_date)
+            dependent_date_key = dependent.scheduled_date or today_key
+            if (dependent_date_key, dependent.scheduled_hour) <= (prereq_task.scheduled_date, prereq_task.scheduled_hour):
+                place_task(schedule, dependent, prereq_date, prereq_task.scheduled_hour, capacity, strictly_after=True)
+
+    return fixes
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +526,17 @@ def rollover_to_next_day(
         "carried": [t.id for t in carried],
         "missed_daily_routine_ids": missed_daily_routine_ids,
     }
+
+
+def find_task_by_id(schedule: Dict[str, List[Task]], task_id: str) -> Optional[Task]:
+    """Locate a task by id anywhere in the multi-day schedule. Used when a
+    task is chosen from a selection menu (e.g. multiple tasks sharing an
+    hour) rather than passed around as an object."""
+    for day_tasks in schedule.values():
+        for t in day_tasks:
+            if t.id == task_id:
+                return t
+    return None
 
 
 def current_hour_tasks(tasks: List[Task], hour: Optional[int] = None) -> List[Task]:

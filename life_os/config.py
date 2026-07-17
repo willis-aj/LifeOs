@@ -398,7 +398,15 @@ DEFAULT_COMPANION_ID = "sage"
 
 # Each player gets their own subdirectory under PLAYERS_DIR containing all of
 # their state: players/<player_id>/player_state.json, tasks.json, etc.
+#
+# SAFETY RULE: PLAYERS_DIR holds real player data and must never be deleted
+# or bulk-cleaned by any code path (tests, automation, "cleanup" scripts).
+# Ad-hoc/automated testing that needs to create and discard players should
+# use TEST_PLAYERS_DIR instead - see persistence.cleanup_test_players(),
+# which is the only function allowed to remove a players directory tree,
+# and it only ever touches TEST_PLAYERS_DIR.
 PLAYERS_DIR = "players"
+TEST_PLAYERS_DIR = "test_players"
 PLAYER_META_FILE = "meta.json"
 PLAYER_STATE_FILE = "player_state.json"
 TASKS_FILE = "tasks.json"

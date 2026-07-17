@@ -12,6 +12,18 @@ Every player gets an isolated directory under `config.PLAYERS_DIR`:
 Everything here is intentionally simple: read whole file, write whole file.
 No external dependencies, no database. This keeps the door open for a future
 sync layer (GitHub/Notion) to slot in without touching the rest of the app.
+
+SAFETY RULE: there is exactly one function in this module that can delete a
+real player - `delete_player(player_id)` - and it exists only as a
+deliberate, user-confirmed CLI feature (see `cli.py`'s delete-player flow,
+which requires an explicit [y]es before calling it). It is not a cleanup
+helper: it never wipes `PLAYERS_DIR` itself, never touches any player other
+than the one named, and refuses to operate on anything that doesn't resolve
+to a direct child of `PLAYERS_DIR`. There must never be a "wipe all
+players" / bulk-cleanup function that targets `PLAYERS_DIR`. Ad-hoc or
+automated testing should use `cleanup_test_players()` instead, which is
+hard-coded to the separate `config.TEST_PLAYERS_DIR` sandbox and can never
+reach real player data.
 """
 
 from __future__ import annotations
@@ -20,6 +32,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 from typing import Any, Dict, List, Optional
 
 from . import config
@@ -88,6 +101,24 @@ def list_players() -> List[Dict[str, str]]:
     return players
 
 
+def has_players() -> bool:
+    """True if PLAYERS_DIR exists and contains at least one player
+    directory. Used at CLI startup to decide whether to show the
+    player-selection menu at all, or jump straight to creating the first
+    one."""
+    return bool(list_players())
+
+
+def cleanup_test_players() -> None:
+    """Delete the sandboxed TEST_PLAYERS_DIR tree, if present. This is the
+    ONLY cleanup function in this module, and it is hard-coded to the test
+    sandbox directory - it never touches PLAYERS_DIR under any
+    circumstance, so it is always safe to call regardless of what real
+    player data exists."""
+    if os.path.isdir(config.TEST_PLAYERS_DIR):
+        shutil.rmtree(config.TEST_PLAYERS_DIR)
+
+
 def create_player(name: str) -> str:
     """Create a new player directory (deduping slugs on collision) and
     return the new player_id."""
@@ -107,6 +138,34 @@ def create_player(name: str) -> str:
 
 def load_player_meta(player_id: str) -> Dict[str, Any]:
     return _read_json(_player_path(player_id, config.PLAYER_META_FILE)) or {"name": player_id}
+
+
+def delete_player(player_id: str) -> None:
+    """Permanently delete one player's entire directory - all of their
+    JSON state, schedules, and inventory. Intended to be called only after
+    the CLI has already gotten an explicit [y]es confirmation from the
+    user.
+
+    Safety guards (all must pass, in order, or this raises instead of
+    deleting anything):
+      - `player_id` must be non-empty and not a path-traversal token
+        ("." / ".." / containing a path separator).
+      - The resolved target must sit directly inside the resolved
+        `PLAYERS_DIR` - never PLAYERS_DIR itself, never anything outside it.
+    """
+    if not player_id or player_id in (".", "..") or "/" in player_id or "\\" in player_id:
+        raise ValueError(f"Refusing to delete invalid player id {player_id!r}.")
+
+    target = os.path.abspath(player_dir(player_id))
+    root = os.path.abspath(config.PLAYERS_DIR)
+
+    if target == root:
+        raise ValueError("Refusing to delete the entire players directory.")
+    if os.path.dirname(target) != root:
+        raise ValueError(f"Refusing to delete a path outside {config.PLAYERS_DIR}: {target}")
+
+    if os.path.isdir(target):
+        shutil.rmtree(target)
 
 
 # ---------------------------------------------------------------------------
