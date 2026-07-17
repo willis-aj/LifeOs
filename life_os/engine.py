@@ -486,6 +486,66 @@ class LifeOSEngine:
             raise ValueError(f"No such task '{task_id}'.")
         return self.complete_task(task)
 
+    def delete_task(self, task_id: str) -> None:
+        """Permanently remove a task from the schedule (any day), rather
+        than completing or skipping it. Mainly useful for UI clients that
+        want to let a user retract a manual task or scheduled event they
+        added by mistake."""
+        found = False
+        for date_key, day_tasks in list(self.schedule.items()):
+            filtered = [t for t in day_tasks if t.id != task_id]
+            if len(filtered) != len(day_tasks):
+                found = True
+            self.schedule[date_key] = filtered
+        if not found:
+            raise ValueError(f"No such task '{task_id}'.")
+        self.refresh_locks()
+        self.save()
+
+    def edit_task(
+        self,
+        task_id: str,
+        label: Optional[str] = None,
+        duration_minutes: Optional[int] = None,
+        goal_id: Optional[str] = None,
+        xp: Optional[int] = None,
+        hour: Optional[int] = None,
+    ) -> Task:
+        """Update an existing task's fields in place. Only the fields
+        passed are changed. Moving `hour` reflows the schedule the same
+        way any other placement does (duration-based bin-packing, rolling
+        to the next day if the target hour's already full)."""
+        task = scheduler.find_task_by_id(self.schedule, task_id)
+        if task is None:
+            raise ValueError(f"No such task '{task_id}'.")
+
+        if label is not None:
+            label = label.strip()
+            if not label:
+                raise ValueError("Task label cannot be empty.")
+            task.label = label
+        if goal_id is not None:
+            if self.goal_by_id(goal_id) is None:
+                raise ValueError(f"No such goal '{goal_id}'.")
+            task.goal = goal_id
+        if xp is not None:
+            if xp <= 0:
+                raise ValueError("XP must be a positive number.")
+            task.xp = xp
+        if duration_minutes is not None:
+            if duration_minutes <= 0:
+                raise ValueError("Duration must be a positive number of minutes.")
+            task.duration_minutes = min(duration_minutes, scheduler.hour_capacity(self.state))
+        if hour is not None:
+            target_date = (
+                datetime.date.fromisoformat(task.scheduled_date) if task.scheduled_date else self.today
+            )
+            scheduler.insert_task(self.schedule, task, target_date, hour, self.state)
+
+        self.refresh_locks()
+        self.save()
+        return task
+
     def _dependents_of(self, task: Task) -> List[Task]:
         if not task.source_routine_id:
             return []

@@ -1,0 +1,72 @@
+<div class="settings-page">
+  <h1>Settings</h1>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else {
+    @if (player(); as p) {
+      <section class="settings-section">
+        <h2>Player</h2>
+        <p class="player-summary">
+          {{ p.name }} - Level {{ p.state.level }} - {{ p.state.xp }} XP - {{ p.state.streak_days }} day streak
+        </p>
+      </section>
+    }
+
+    <section class="settings-section">
+      <h2>Companion</h2>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Companion</mat-label>
+        <mat-select
+          [value]="currentCompanion()?.companion_id"
+          (selectionChange)="selectCompanion($event.value)"
+        >
+          @for (companion of companions(); track companion.id) {
+            <mat-option [value]="companion.id">{{ companion.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      @if (currentCompanion(); as c) {
+        <p class="companion-message">{{ c.message }}</p>
+      }
+    </section>
+
+    <section class="settings-section">
+      <h2>Season</h2>
+      @if (currentSeason(); as s) {
+        <p>{{ s.label ?? 'No active season.' }}</p>
+      }
+    </section>
+
+    <section class="settings-section">
+      <h2>Inventory</h2>
+      @if (inventory().length === 0) {
+        <p class="empty-hint">No items yet.</p>
+      } @else {
+        <mat-chip-set>
+          @for (item of inventory(); track item.id) {
+            <mat-chip [matTooltip]="item.rarity">{{ item.label }}</mat-chip>
+          }
+        </mat-chip-set>
+      }
+    </section>
+
+    <section class="settings-section">
+      <h2>Routines</h2>
+      @if (routines().length === 0) {
+        <p class="empty-hint">No routines configured.</p>
+      } @else {
+        <div class="routine-list">
+          @for (routine of routines(); track routine.id) {
+            <div class="routine-row">
+              <span class="routine-label">{{ routine.label }}</span>
+              <span class="routine-meta">{{ routine.frequency }} - {{ routine.xp }} XP</span>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  }
+</div>

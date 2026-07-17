@@ -1,0 +1,13 @@
+<h2 mat-dialog-title>Delete player</h2>
+
+<mat-dialog-content>
+  <p>
+    Are you sure you want to delete <strong>{{ data.playerName }}</strong> and all their data?
+  </p>
+  <p class="warning">This permanently removes their XP, streak, goals, schedule, and inventory. This cannot be undone.</p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">No</button>
+  <button mat-flat-button color="warn" (click)="confirm()">Yes, delete</button>
+</mat-dialog-actions>

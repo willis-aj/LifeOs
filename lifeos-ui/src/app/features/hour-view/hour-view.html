@@ -1,0 +1,29 @@
+<div class="hour-view">
+  <div class="hour-view-header">
+    <h3>{{ formatHour(resolvedHour()) }}</h3>
+    <button mat-icon-button matTooltip="Refresh" (click)="reload()">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="32" />
+    </div>
+  } @else if (tasks().length === 0) {
+    <p class="empty-hint">Nothing scheduled this hour.</p>
+  } @else {
+    <div class="task-list">
+      @for (task of tasks(); track task.id) {
+        <app-task-item
+          [task]="task"
+          [showHour]="false"
+          (complete)="onComplete($event)"
+          (skip)="onSkip($event)"
+          (edit)="onEdit($event)"
+          (delete)="onDelete($event)"
+        />
+      }
+    </div>
+  }
+</div>

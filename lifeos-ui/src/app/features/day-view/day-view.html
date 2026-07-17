@@ -1,0 +1,37 @@
+<div class="day-view-page">
+  <div class="page-header">
+    <h1>Today</h1>
+    <button mat-flat-button color="primary" (click)="openAddTaskDialog()">
+      <mat-icon>add</mat-icon>
+      Add task
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else if (groups().length === 0) {
+    <p class="empty-hint">Nothing scheduled today.</p>
+  } @else {
+    @for (group of groups(); track group.hour) {
+      <section class="hour-group">
+        <h2 class="hour-heading">{{ formatHour(group.hour) }}</h2>
+        <div class="task-list">
+          @for (task of group.tasks; track task.id) {
+            <app-task-item
+              [task]="task"
+              [showHour]="false"
+              [showPullForward]="true"
+              (complete)="onComplete($event)"
+              (skip)="onSkip($event)"
+              (edit)="onEdit($event)"
+              (delete)="onDelete($event)"
+              (pullForward)="onPullForward($event)"
+            />
+          }
+        </div>
+      </section>
+    }
+  }
+</div>

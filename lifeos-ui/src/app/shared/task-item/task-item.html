@@ -1,0 +1,68 @@
+<div
+  class="task-item"
+  [class.completed]="task().completed"
+  [class.skipped]="task().skipped"
+  [class.locked]="task().locked"
+>
+  <div class="task-main">
+    <div class="task-title-row">
+      @if (showHour()) {
+        <span class="hour-badge">{{ formatHour(task().scheduled_hour) }}</span>
+      }
+      <span class="label">{{ task().label }}</span>
+      @if (task().boss) {
+        <mat-chip class="boss-chip" highlighted>BOSS</mat-chip>
+      }
+    </div>
+
+    <div class="meta-row">
+      <span>{{ task().goal_name }}</span>
+      <span>&middot;</span>
+      <span>{{ task().duration_minutes }} min</span>
+      <span>&middot;</span>
+      <span>{{ task().xp }} XP</span>
+
+      @if (task().completed) {
+        <mat-chip class="status-chip done">Done</mat-chip>
+      } @else if (task().skipped) {
+        <mat-chip class="status-chip skipped">Skipped</mat-chip>
+      } @else if (task().locked) {
+        <mat-chip class="status-chip locked" [matTooltip]="task().lock_reason ?? ''">
+          Locked: {{ task().lock_reason }}
+        </mat-chip>
+      }
+
+      @if (task().push_reason) {
+        <mat-chip class="status-chip push-reason">{{ pushReasonLabels[task().push_reason!] }}</mat-chip>
+      }
+    </div>
+  </div>
+
+  @if (!task().completed && !task().skipped) {
+    <div class="task-actions">
+      <button
+        mat-icon-button
+        color="primary"
+        [disabled]="task().locked"
+        [matTooltip]="task().locked ? ('Locked: ' + task().lock_reason) : 'Complete'"
+        (click)="complete.emit(task())"
+      >
+        <mat-icon>check_circle</mat-icon>
+      </button>
+      <button mat-icon-button matTooltip="Skip" (click)="skip.emit(task())">
+        <mat-icon>skip_next</mat-icon>
+      </button>
+      @if (showPullForward()) {
+        <button mat-icon-button matTooltip="Pull forward to now" (click)="pullForward.emit(task())">
+          <mat-icon>arrow_upward</mat-icon>
+        </button>
+      }
+      <button mat-icon-button matTooltip="Edit" (click)="edit.emit(task())">
+        <mat-icon>edit</mat-icon>
+      </button>
+      <button mat-icon-button color="warn" matTooltip="Delete" (click)="delete.emit(task())">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </div>
+  }
+</div>

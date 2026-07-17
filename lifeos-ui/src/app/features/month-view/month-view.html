@@ -1,0 +1,55 @@
+<div class="month-view-page">
+  <div class="month-header">
+    <button mat-icon-button (click)="previousMonth()" aria-label="Previous month">
+      <mat-icon>chevron_left</mat-icon>
+    </button>
+    <h1>{{ monthLabel }}</h1>
+    <button mat-icon-button (click)="nextMonth()" aria-label="Next month">
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else if (view(); as v) {
+    <div class="calendar-grid">
+      @for (heading of weekdayHeaders; track heading) {
+        <div class="weekday-heading">{{ heading }}</div>
+      }
+
+      @for (week of v.weeks; track $index) {
+        @for (cell of week; track (cell ? cell.day : $index)) {
+          <div
+            class="day-cell"
+            [class.empty]="!cell"
+            [class.clickable]="!!cell"
+            (click)="openDayDetail(cell)"
+          >
+            @if (cell) {
+              <div class="day-number">{{ cell.day }}</div>
+              <div class="day-labels">
+                @for (label of visibleLabels(cell); track label) {
+                  <div class="day-label">{{ label }}</div>
+                }
+                @if (overflowCount(cell) > 0) {
+                  <div class="day-label more">+ {{ overflowCount(cell) }} more</div>
+                }
+              </div>
+            }
+          </div>
+        }
+      }
+    </div>
+
+    <div class="goals-summary">
+      <h2>Active goals</h2>
+      <div class="goals-list">
+        @for (goal of v.goals; track goal.id) {
+          <span class="goal-chip">{{ goal.name }}: level {{ goal.level }}, {{ goal.xp }} XP</span>
+        }
+      </div>
+    </div>
+  }
+</div>

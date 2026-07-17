@@ -1,0 +1,32 @@
+.hour-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.hour-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+}
+
+.empty-hint {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

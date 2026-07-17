@@ -1,0 +1,61 @@
+<div class="goals-page">
+  <header class="goals-header">
+    <h1>Goals</h1>
+    <button mat-flat-button color="primary" (click)="openAdd()">
+      <mat-icon>add</mat-icon>
+      Add goal
+    </button>
+  </header>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else if (goals().length === 0) {
+    <p class="empty-hint">No goals yet. Add one to start tracking progress.</p>
+  } @else {
+    <div class="goal-list">
+      @for (goal of goals(); track goal.id) {
+        <div class="goal-card">
+          <div class="goal-card-header">
+            <div class="goal-title">
+              <span class="goal-name">{{ goal.name }}</span>
+              <span class="goal-level">Level {{ goal.level }}</span>
+            </div>
+            <div class="goal-actions">
+              <button mat-icon-button matTooltip="Edit goal" (click)="openEdit(goal)">
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button matTooltip="Delete goal" (click)="openDelete(goal)">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          @if (goal.description) {
+            <p class="goal-description">{{ goal.description }}</p>
+          }
+
+          <div class="goal-progress">
+            <mat-progress-bar mode="determinate" [value]="progressPercent(goal)" />
+            <span class="goal-progress-label">
+              {{ goal.xp }} XP
+              @if (goal.next_milestone != null) {
+                / {{ goal.next_milestone }} XP to next milestone
+              } @else {
+                (all milestones reached)
+              }
+            </span>
+          </div>
+
+          <div class="goal-meta">
+            <span>{{ goal.base_xp_per_task }} XP per task</span>
+            @if (goal.milestones.length) {
+              <span>Milestones: {{ goal.milestones.join(', ') }}</span>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
