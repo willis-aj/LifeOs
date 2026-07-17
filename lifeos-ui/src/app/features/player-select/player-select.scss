@@ -1,0 +1,34 @@
+.player-select-page {
+  max-width: 480px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+
+  h1 {
+    text-align: center;
+  }
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.empty-hint {
+  text-align: center;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.player-list {
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.new-player-btn {
+  align-self: center;
+}

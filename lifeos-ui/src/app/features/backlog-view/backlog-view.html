@@ -1,0 +1,77 @@
+<div class="backlog-page">
+  <h1>Backlog</h1>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else if (backlog(); as b) {
+    <section class="backlog-section">
+      <h2>Pushed forward today</h2>
+      @if (b.pushed_today.length === 0) {
+        <p class="empty-hint">None.</p>
+      } @else {
+        <div class="task-list">
+          @for (task of b.pushed_today; track task.id) {
+            <app-task-item
+              [task]="task"
+              [showPullForward]="true"
+              (complete)="onComplete($event)"
+              (skip)="onSkip($event)"
+              (edit)="onEdit($event)"
+              (delete)="onDelete($event)"
+              (pullForward)="onPullForward($event)"
+            />
+          }
+        </div>
+      }
+    </section>
+
+    <section class="backlog-section">
+      <h2>Tomorrow</h2>
+      @if (b.tomorrow.length === 0) {
+        <p class="empty-hint">Nothing yet.</p>
+      } @else {
+        <div class="task-list">
+          @for (task of b.tomorrow; track task.id) {
+            <app-task-item
+              [task]="task"
+              [showPullForward]="true"
+              (complete)="onComplete($event)"
+              (skip)="onSkip($event)"
+              (edit)="onEdit($event)"
+              (delete)="onDelete($event)"
+              (pullForward)="onPullForward($event)"
+            />
+          }
+        </div>
+      }
+    </section>
+
+    <section class="backlog-section">
+      <h2>Later this week</h2>
+      @if (b.later_this_week.length === 0) {
+        <p class="empty-hint">Nothing yet.</p>
+      } @else {
+        @for (entry of b.later_this_week; track trackByDate($index, entry)) {
+          <div class="day-group">
+            <h3>{{ entry.date }}</h3>
+            <div class="task-list">
+              @for (task of entry.tasks; track task.id) {
+                <app-task-item
+                  [task]="task"
+                  [showPullForward]="true"
+                  (complete)="onComplete($event)"
+                  (skip)="onSkip($event)"
+                  (edit)="onEdit($event)"
+                  (delete)="onDelete($event)"
+                  (pullForward)="onPullForward($event)"
+                />
+              }
+            </div>
+          </div>
+        }
+      }
+    </section>
+  }
+</div>

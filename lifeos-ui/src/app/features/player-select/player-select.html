@@ -1,0 +1,36 @@
+<div class="player-select-page">
+  <h1>Select player</h1>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="36" />
+    </div>
+  } @else {
+    @if (players().length === 0) {
+      <p class="empty-hint">No players found yet - create one to get started.</p>
+    }
+
+    <mat-nav-list class="player-list">
+      @for (player of players(); track player.id) {
+        <a mat-list-item (click)="selectPlayer(player.id, player.name)">
+          <mat-icon matListItemIcon>person</mat-icon>
+          <span matListItemTitle>{{ player.name }}</span>
+          <button
+            mat-icon-button
+            matListItemMeta
+            color="warn"
+            aria-label="Delete player"
+            (click)="openDeleteDialog(player, $event)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </a>
+      }
+    </mat-nav-list>
+
+    <button mat-flat-button color="primary" class="new-player-btn" (click)="openCreateDialog()">
+      <mat-icon>add</mat-icon>
+      New player
+    </button>
+  }
+</div>

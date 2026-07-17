@@ -1,0 +1,44 @@
+<div class="modes-page">
+  <h1>Modes</h1>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40" />
+    </div>
+  } @else if (mode(); as m) {
+    <section class="mode-section">
+      <h2>Energy mode</h2>
+      <p class="section-hint">Affects task pacing and load for the rest of the day.</p>
+      <mat-button-toggle-group
+        [value]="m.energy_mode"
+        (change)="setEnergyMode($event.value)"
+      >
+        @for (option of m.available_energy_modes; track option) {
+          <mat-button-toggle [value]="option">{{ energyModeLabels[option] }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </section>
+
+    <section class="mode-section">
+      <h2>Chaos Mode</h2>
+      <p class="section-hint">Shuffles up your schedule for variety and surprise tasks.</p>
+      <mat-slide-toggle [checked]="m.chaos_mode" (change)="toggleChaos($event)">
+        {{ m.chaos_mode ? 'Enabled' : 'Disabled' }}
+      </mat-slide-toggle>
+    </section>
+
+    <section class="mode-section">
+      <h2>Comfort Mode</h2>
+      <p class="section-hint">Lightens the load during rough patches.</p>
+      <mat-slide-toggle [checked]="m.comfort_mode" (change)="toggleComfort($event)">
+        {{ m.comfort_mode ? 'Enabled' : 'Disabled' }}
+      </mat-slide-toggle>
+    </section>
+
+    <section class="mode-section danger-zone">
+      <h2>Reset player</h2>
+      <p class="section-hint">Wipes XP, level, streaks, and progress back to the start.</p>
+      <button mat-stroked-button color="warn" (click)="openReset()">Reset player</button>
+    </section>
+  }
+</div>

@@ -1,0 +1,20 @@
+<h2 mat-dialog-title>{{ monthName }} {{ data.day }}, {{ data.year }}</h2>
+
+<mat-dialog-content>
+  @if (data.labels.length === 0) {
+    <p class="empty-hint">Nothing scheduled this day.</p>
+  } @else {
+    <mat-list>
+      @for (label of data.labels; track $index) {
+        <mat-list-item>
+          <mat-icon matListItemIcon>event</mat-icon>
+          <span matListItemTitle>{{ label }}</span>
+        </mat-list-item>
+      }
+    </mat-list>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close>Close</button>
+</mat-dialog-actions>

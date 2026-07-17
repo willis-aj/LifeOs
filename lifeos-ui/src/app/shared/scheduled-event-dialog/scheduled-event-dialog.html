@@ -1,0 +1,47 @@
+<h2 mat-dialog-title>You just completed a scheduling task</h2>
+
+<mat-dialog-content class="form-content">
+  <p>Would you like to create the actual event on another day?</p>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Event name</mat-label>
+    <input matInput [(ngModel)]="label" name="label" />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Date</mat-label>
+    <input matInput [matDatepicker]="picker" [(ngModel)]="date" name="date" />
+    <mat-datepicker-toggle matIconSuffix [for]="picker" />
+    <mat-datepicker #picker />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Time</mat-label>
+    <mat-select [(ngModel)]="hour" name="hour">
+      @for (h of hours; track h) {
+        <mat-option [value]="h">{{ formatHour(h) }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Duration (minutes)</mat-label>
+    <input matInput type="number" min="1" [(ngModel)]="durationMinutes" name="duration" />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Goal</mat-label>
+    <mat-select [(ngModel)]="goalId" name="goal">
+      @for (goal of goals(); track goal.id) {
+        <mat-option [value]="goal.id">{{ goal.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-checkbox [(ngModel)]="boss" name="boss">This is a boss fight</mat-checkbox>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="skip()">Not now</button>
+  <button mat-flat-button color="primary" (click)="create()">Create event</button>
+</mat-dialog-actions>

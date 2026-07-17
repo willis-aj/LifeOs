@@ -1,0 +1,62 @@
+@if (loading()) {
+  <div class="loading">
+    <mat-spinner diameter="40" />
+  </div>
+} @else if (view(); as v) {
+  <div class="home-page">
+    <mat-card class="stats-card">
+      <mat-card-content>
+        <div class="stats-header">
+          <h1>{{ v.player_name }}</h1>
+          <span class="mode-chip">{{ v.state.mode_label }}</span>
+        </div>
+
+        <div class="level-row">
+          <span class="level-label">Level {{ v.state.level }}</span>
+          <span class="xp-label">{{ v.state.xp_into_level }} / {{ v.state.xp_to_next }} XP</span>
+        </div>
+        <mat-progress-bar mode="determinate" [value]="xpProgressPercent()" />
+
+        <div class="stat-chips">
+          <mat-chip>
+            <mat-icon matChipAvatar>local_fire_department</mat-icon>
+            Streak: {{ v.state.streak_days }}d (best {{ v.state.longest_streak }}d)
+          </mat-chip>
+          <mat-chip>
+            <mat-icon matChipAvatar>military_tech</mat-icon>
+            Boss fights won: {{ v.state.boss_fights_won }}
+          </mat-chip>
+          <mat-chip>
+            <mat-icon matChipAvatar>inventory_2</mat-icon>
+            Inventory: {{ v.state.inventory.length }}
+          </mat-chip>
+        </div>
+
+        <p class="companion-message">
+          <mat-icon inline>chat_bubble</mat-icon>
+          "{{ v.companion_message }}"
+        </p>
+      </mat-card-content>
+    </mat-card>
+
+    <div class="current-hour-section">
+      <h2>Current hour: {{ v.current_hour }}:00</h2>
+
+      @if (v.current_hour_tasks.length === 0) {
+        <p class="empty-hint">Nothing scheduled this hour.</p>
+      }
+
+      <div class="task-list">
+        @for (task of v.current_hour_tasks; track task.id) {
+          <app-task-item
+            [task]="task"
+            (complete)="onComplete($event)"
+            (skip)="onSkip($event)"
+            (edit)="onEdit($event)"
+            (delete)="onDelete($event)"
+          />
+        }
+      </div>
+    </div>
+  </div>
+}

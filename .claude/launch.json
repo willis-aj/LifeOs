@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lifeos-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--prefix", "lifeos-ui"],
+      "port": 4200
+    }
+  ]
+}
