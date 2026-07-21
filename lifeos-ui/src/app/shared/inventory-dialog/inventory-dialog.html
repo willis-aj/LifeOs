@@ -1,0 +1,19 @@
+<h2 mat-dialog-title>Inventory</h2>
+<mat-dialog-content>
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="32" />
+    </div>
+  } @else if (items().length === 0) {
+    <p class="empty-hint">No items yet - complete tasks for a chance at loot.</p>
+  } @else {
+    <mat-chip-set>
+      @for (item of items(); track item.id) {
+        <mat-chip [matTooltip]="item.rarity">{{ item.label }}</mat-chip>
+      }
+    </mat-chip-set>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-button (click)="close()">Close</button>
+</mat-dialog-actions>

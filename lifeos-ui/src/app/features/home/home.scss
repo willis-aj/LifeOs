@@ -47,6 +47,16 @@
     margin-top: 1rem;
   }
 
+  .inventory-chip {
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--mat-sys-secondary-container);
+      outline: none;
+    }
+  }
+
   .companion-message {
     margin-top: 1rem;
     font-style: italic;

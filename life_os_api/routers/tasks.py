@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from life_os.engine import LifeOSEngine
 
 from ..deps import get_engine, serialize_task, serialize_tasks
-from ..schemas import AddManualTaskRequest, EditTaskRequest, PullForwardRequest
+from ..schemas import AddManualTaskRequest, CompleteTaskRequest, EditTaskRequest, PullForwardRequest
 
 router = APIRouter(prefix="/players/{player_id}", tags=["tasks"])
 
@@ -84,9 +84,13 @@ def add_manual_task(body: AddManualTaskRequest, engine: LifeOSEngine = Depends(g
 
 
 @router.post("/tasks/{task_id}/complete")
-def complete_task(task_id: str, engine: LifeOSEngine = Depends(get_engine)):
+def complete_task(
+    task_id: str,
+    body: CompleteTaskRequest = CompleteTaskRequest(),
+    engine: LifeOSEngine = Depends(get_engine),
+):
     try:
-        result = engine.complete_specific_task(task_id)
+        result = engine.complete_specific_task(task_id, difficulty=body.difficulty, notes=body.notes)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return _result_or_error(result)

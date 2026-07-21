@@ -245,6 +245,7 @@ def _default_routines() -> List[Routine]:
             interval_days=r.get("interval_days"),
             requires=list(r.get("requires", [])),
             is_scheduling_task=r.get("is_scheduling_task", False),
+            note_template=r.get("note_template"),
         )
         for r in config.ROUTINES
     ]

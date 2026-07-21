@@ -1,0 +1,42 @@
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 380px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.new-item-section {
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+
+  h3 {
+    margin: 0 0 0.15rem;
+    font-size: 0.95rem;
+  }
+}
+
+.section-hint {
+  margin: 0 0 0.5rem;
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.8rem;
+}
+
+.new-item-row {
+  display: flex;
+  gap: 0.5rem;
+
+  mat-form-field {
+    flex: 1;
+  }
+}
+
+.added-hint {
+  margin: 0.4rem 0 0;
+  color: var(--mat-sys-primary);
+  font-size: 0.85rem;
+}

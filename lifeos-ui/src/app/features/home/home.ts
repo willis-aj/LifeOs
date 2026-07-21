@@ -7,6 +7,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ScheduleService, HomeView } from '../../core/services/schedule.service';
 import { TaskService } from '../../core/services/task.service';
@@ -14,12 +15,19 @@ import { EventService } from '../../core/services/event.service';
 import { NotifyService } from '../../core/services/notify.service';
 import { PlayerContextService } from '../../core/state/player-context.service';
 import { LifeTask } from '../../core/models/task.model';
+import { formatHour } from '../../core/utils/format-hour';
 import { TaskItem } from '../../shared/task-item/task-item';
 import { EditTaskDialog } from '../../shared/edit-task-dialog/edit-task-dialog';
 import {
   ScheduledEventDialog,
   ScheduledEventDialogData,
 } from '../../shared/scheduled-event-dialog/scheduled-event-dialog';
+import { InventoryDialog, InventoryDialogData } from '../../shared/inventory-dialog/inventory-dialog';
+import {
+  CompleteTaskDialog,
+  CompleteTaskDialogData,
+  CompleteTaskDialogResult,
+} from '../../shared/complete-task-dialog/complete-task-dialog';
 
 /** The main home dashboard: level/XP/streak/mode/boss-fights/companion
  * plus the current hour's tasks - the same thing the CLI shows on every
@@ -33,6 +41,7 @@ import {
     MatIconModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
     TaskItem,
   ],
   templateUrl: './home.html',
@@ -41,6 +50,7 @@ import {
 export class Home implements OnInit {
   readonly loading = signal(true);
   readonly view = signal<HomeView | null>(null);
+  readonly formatHour = formatHour;
   readonly xpProgressPercent = computed(() => {
     const v = this.view();
     if (!v || v.state.xp_to_next === 0) {
@@ -110,17 +120,25 @@ export class Home implements OnInit {
   onComplete(task: LifeTask): void {
     const playerId = this.playerContext.playerId();
     if (!playerId) return;
-    this.taskService.completeTask(playerId, task.id).subscribe({
-      next: (result) => {
-        const xp = result['xp_gained'];
-        this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
-        if (result['scheduling_task_completed']) {
-          this.openScheduledEventDialog(task, playerId);
-        } else {
-          this.reload();
-        }
-      },
-      error: (err) => this.notify.error(err),
+    const data: CompleteTaskDialogData = { task, playerId };
+    const ref = this.dialog.open<CompleteTaskDialog, CompleteTaskDialogData, CompleteTaskDialogResult>(
+      CompleteTaskDialog,
+      { width: '480px', data },
+    );
+    ref.afterClosed().subscribe((completion) => {
+      if (!completion) return;
+      this.taskService.completeTask(playerId, task.id, completion).subscribe({
+        next: (result) => {
+          const xp = result['xp_gained'];
+          this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
+          if (result['scheduling_task_completed']) {
+            this.openScheduledEventDialog(task, playerId);
+          } else {
+            this.reload();
+          }
+        },
+        error: (err) => this.notify.error(err),
+      });
     });
   }
 
@@ -162,6 +180,13 @@ export class Home implements OnInit {
         error: (err) => this.notify.error(err),
       });
     });
+  }
+
+  openInventory(): void {
+    const playerId = this.playerContext.playerId();
+    if (!playerId) return;
+    const data: InventoryDialogData = { playerId };
+    this.dialog.open(InventoryDialog, { width: '420px', data });
   }
 
   private openScheduledEventDialog(completedTask: LifeTask, playerId: string): void {

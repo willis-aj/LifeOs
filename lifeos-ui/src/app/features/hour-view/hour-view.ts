@@ -11,12 +11,18 @@ import { EventService } from '../../core/services/event.service';
 import { NotifyService } from '../../core/services/notify.service';
 import { PlayerContextService } from '../../core/state/player-context.service';
 import { LifeTask } from '../../core/models/task.model';
+import { formatHour } from '../../core/utils/format-hour';
 import { TaskItem } from '../../shared/task-item/task-item';
 import { EditTaskDialog } from '../../shared/edit-task-dialog/edit-task-dialog';
 import {
   ScheduledEventDialog,
   ScheduledEventDialogData,
 } from '../../shared/scheduled-event-dialog/scheduled-event-dialog';
+import {
+  CompleteTaskDialog,
+  CompleteTaskDialogData,
+  CompleteTaskDialogResult,
+} from '../../shared/complete-task-dialog/complete-task-dialog';
 
 /** A focused view of a single hour's tasks (defaults to the current hour)
  * with full complete/skip/edit/delete actions. Self-contained so it can be
@@ -67,27 +73,30 @@ export class HourView implements OnInit {
     });
   }
 
-  formatHour(hour: number): string {
-    const period = hour < 12 ? 'AM' : 'PM';
-    let display = hour % 12;
-    if (display === 0) display = 12;
-    return `${display}:00 ${period}`;
-  }
+  readonly formatHour = formatHour;
 
   onComplete(task: LifeTask): void {
     const playerId = this.playerContext.playerId();
     if (!playerId) return;
-    this.taskService.completeTask(playerId, task.id).subscribe({
-      next: (result) => {
-        const xp = result['xp_gained'];
-        this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
-        if (result['scheduling_task_completed']) {
-          this.openScheduledEventDialog(task, playerId);
-        } else {
-          this.reload();
-        }
-      },
-      error: (err) => this.notify.error(err),
+    const data: CompleteTaskDialogData = { task, playerId };
+    const ref = this.dialog.open<CompleteTaskDialog, CompleteTaskDialogData, CompleteTaskDialogResult>(
+      CompleteTaskDialog,
+      { width: '480px', data },
+    );
+    ref.afterClosed().subscribe((completion) => {
+      if (!completion) return;
+      this.taskService.completeTask(playerId, task.id, completion).subscribe({
+        next: (result) => {
+          const xp = result['xp_gained'];
+          this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
+          if (result['scheduling_task_completed']) {
+            this.openScheduledEventDialog(task, playerId);
+          } else {
+            this.reload();
+          }
+        },
+        error: (err) => this.notify.error(err),
+      });
     });
   }
 

@@ -120,6 +120,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "duration_minutes": 15,
         "xp": 25,
         "boss": True,
+        "note_template": "Site used: \nAny irritation or issues: \nReading at swap: ",
     },
     {
         "id": "med_refill",
@@ -157,6 +158,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 18,
         "duration_minutes": 60,
         "xp": 30,
+        "note_template": "Recipe: \nWhat worked: \nWhat I'd change next time: ",
     },
     {
         "id": "add_recipes_to_notion",

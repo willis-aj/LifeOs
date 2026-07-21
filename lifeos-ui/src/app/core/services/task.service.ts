@@ -28,6 +28,11 @@ export interface SkipTaskResult {
   task: LifeTask;
 }
 
+export interface CompleteTaskRequest {
+  difficulty?: string;
+  notes?: string;
+}
+
 /** Task actions: complete, skip, add (manual), pull-forward, edit,
  * delete. Views (day/month/backlog) live in schedule.service.ts. */
 @Service()
@@ -42,9 +47,13 @@ export class TaskService {
     return this.http.post<LifeTask>(`${this.base(playerId)}/tasks`, body).pipe(catchError(rethrowApiError));
   }
 
-  completeTask(playerId: string, taskId: string): Observable<Record<string, unknown>> {
+  completeTask(
+    playerId: string,
+    taskId: string,
+    body: CompleteTaskRequest = {},
+  ): Observable<Record<string, unknown>> {
     return this.http
-      .post<Record<string, unknown>>(`${this.base(playerId)}/tasks/${taskId}/complete`, {})
+      .post<Record<string, unknown>>(`${this.base(playerId)}/tasks/${taskId}/complete`, body)
       .pipe(catchError(rethrowApiError));
   }
 

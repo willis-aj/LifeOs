@@ -48,6 +48,9 @@ class Task:
     scheduled_date: str = ""  # ISO date - which day's schedule this task lives on
     push_reason: Optional[str] = None  # "skip" | "dependency_push" | "hour_drift" | "eod_rollover" | None
     is_scheduling_task: bool = False  # True for "schedule X" / "RSVP to X" style tasks
+    difficulty: Optional[str] = None  # "easy" | "medium" | "hard" | "very_hard" - set on completion
+    notes: Optional[str] = None  # freeform notes recorded on completion
+    note_template: Optional[str] = None  # pre-fill text offered when completing this task
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -72,6 +75,7 @@ class Routine:
     requires: List[str] = field(default_factory=list)  # prerequisite routine ids
     missed_dates: List[str] = field(default_factory=list)  # ISO dates this routine went incomplete
     is_scheduling_task: bool = False  # True for "schedule X" / "RSVP to X" style routines
+    note_template: Optional[str] = None  # pre-fill text offered when completing generated tasks
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

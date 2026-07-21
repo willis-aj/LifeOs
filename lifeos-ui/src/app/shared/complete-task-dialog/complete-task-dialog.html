@@ -1,0 +1,73 @@
+<h2 mat-dialog-title>Complete "{{ data.task.label }}"</h2>
+
+<mat-dialog-content class="dialog-content">
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Difficulty</mat-label>
+    <mat-select [(ngModel)]="difficulty" name="difficulty">
+      <mat-option value="">Not rated</mat-option>
+      @for (option of difficultyOptions; track option) {
+        <mat-option [value]="option">{{ difficultyLabels[option] }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Notes</mat-label>
+    <textarea matInput rows="4" [(ngModel)]="notes" name="notes"></textarea>
+  </mat-form-field>
+
+  <section class="new-item-section">
+    <h3>Create new event or routine</h3>
+    <p class="section-hint">Spin off a follow-up task while it's fresh in mind.</p>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input matInput [(ngModel)]="newItemName" name="newItemName" />
+    </mat-form-field>
+
+    <div class="new-item-row">
+      <mat-form-field appearance="outline">
+        <mat-label>Duration (min)</mat-label>
+        <input matInput type="number" min="1" [(ngModel)]="newItemDuration" name="newItemDuration" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Goal</mat-label>
+        <mat-select [(ngModel)]="newItemGoalId" name="newItemGoalId">
+          <mat-option value="">Default</mat-option>
+          @for (goal of goals(); track goal.id) {
+            <mat-option [value]="goal.id">{{ goal.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Recurrence</mat-label>
+        <mat-select [(ngModel)]="newItemRecurrence" name="newItemRecurrence">
+          <mat-option value="none">One-time</mat-option>
+          <mat-option value="daily">Daily</mat-option>
+          <mat-option value="weekly">Weekly</mat-option>
+          <mat-option value="monthly">Monthly</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <button
+      mat-stroked-button
+      type="button"
+      [disabled]="!newItemName.trim() || adding()"
+      (click)="addToLifeOs()"
+    >
+      Add to LifeOS
+    </button>
+
+    @if (lastAdded(); as added) {
+      <p class="added-hint">"{{ added }}" added.</p>
+    }
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">Cancel</button>
+  <button mat-flat-button color="primary" (click)="save()">Save</button>
+</mat-dialog-actions>
