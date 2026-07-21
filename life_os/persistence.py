@@ -260,3 +260,21 @@ def load_routines(player_id: str) -> List[Routine]:
     if data is None:
         return _default_routines()
     return [Routine.from_dict(d) for d in data]
+
+
+# ---------------------------------------------------------------------------
+# Self-Care Agent conversation history
+# ---------------------------------------------------------------------------
+# Stored as a single object rather than a bare list so the small pending-
+# action state machine (life_os.self_care_agent_chat) can persist alongside
+# the transcript without a second file.
+
+def save_self_care_chat(player_id: str, data: Dict[str, Any]) -> None:
+    _write_json(_player_path(player_id, config.SELF_CARE_CHAT_FILE), data)
+
+
+def load_self_care_chat(player_id: str) -> Dict[str, Any]:
+    data = _read_json(_player_path(player_id, config.SELF_CARE_CHAT_FILE))
+    if data is None:
+        return {"messages": [], "pending_action": None}
+    return data

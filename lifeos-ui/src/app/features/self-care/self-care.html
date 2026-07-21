@@ -1,0 +1,8 @@
+<div class="self-care-page">
+  <h1>Self-Care Agent</h1>
+  @if (playerId(); as id) {
+    <div class="chat-host">
+      <app-chat-panel [playerId]="id" />
+    </div>
+  }
+</div>

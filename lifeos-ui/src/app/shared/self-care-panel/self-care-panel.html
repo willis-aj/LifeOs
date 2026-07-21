@@ -1,0 +1,19 @@
+@if (status(); as s) {
+  @if (s.comfort_mode_recommended) {
+    <div class="comfort-suggestion">
+      <mat-icon>self_improvement</mat-icon>
+      <span>Things look like a lot right now. Comfort Mode trims the schedule to just the essentials.</span>
+      <button mat-stroked-button [disabled]="switching()" (click)="switchToComfortMode()">
+        Switch to Comfort Mode
+      </button>
+    </div>
+  }
+
+  @if (s.messages.length > 0) {
+    <div class="self-care-nudges">
+      @for (message of s.messages; track message.task_id) {
+        <p class="nudge">{{ message.text }}</p>
+      }
+    </div>
+  }
+}

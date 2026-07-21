@@ -79,3 +79,7 @@ class AddRoutineRequest(BaseModel):
     interval_days: Optional[int] = Field(default=None, gt=0)
     boss: bool = False
     note_template: Optional[str] = None
+
+
+class SelfCareChatRequest(BaseModel):
+    message: str = Field(min_length=1)

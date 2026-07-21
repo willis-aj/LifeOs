@@ -1,0 +1,37 @@
+<div class="chat-panel">
+  <div class="scrollback" #scrollback>
+    @if (loading()) {
+      <div class="loading">
+        <mat-spinner diameter="32" />
+      </div>
+    } @else if (messages().length === 0) {
+      <p class="empty-hint">
+        Say hello, mention a self-care thing you want help keeping up with, or let the agent know if today's a lot.
+      </p>
+    } @else {
+      @for (message of messages(); track $index) {
+        <div class="message-row" [class.from-user]="message.speaker === 'user'">
+          @if (message.speaker !== 'user') {
+            <span class="persona-label">{{ message.speaker === 'system' ? 'LifeOS System' : 'Self-Care Agent' }}</span>
+          }
+          <div class="bubble" [class]="'bubble-' + message.speaker">
+            {{ message.text }}
+          </div>
+        </div>
+      }
+    }
+  </div>
+
+  <div class="composer">
+    <input
+      type="text"
+      placeholder="Talk to the Self-Care Agent..."
+      [(ngModel)]="draftText"
+      (keydown.enter)="onEnter($event)"
+      [disabled]="sending()"
+    />
+    <button mat-icon-button [disabled]="sending() || !draftText.trim()" (click)="send()">
+      <mat-icon>send</mat-icon>
+    </button>
+  </div>
+</div>
