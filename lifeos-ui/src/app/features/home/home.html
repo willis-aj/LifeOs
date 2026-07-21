@@ -47,6 +47,8 @@
       </mat-card-content>
     </mat-card>
 
+    <app-self-care-panel [playerId]="v.player_id" (comfortModeToggled)="reload()" />
+
     <div class="current-hour-section">
       <h2>Current hour: {{ formatHour(v.current_hour) }}</h2>
 

@@ -31,6 +31,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/modes/modes').then((m) => m.Modes),
   },
   {
+    path: 'self-care',
+    loadComponent: () => import('./features/self-care/self-care').then((m) => m.SelfCare),
+  },
+  {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings').then((m) => m.Settings),
   },

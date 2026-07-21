@@ -16,7 +16,20 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import companions, events, goals, home, inventory, modes, players, routines, seasons, tasks
+from .routers import (
+    companions,
+    events,
+    goals,
+    home,
+    inventory,
+    modes,
+    players,
+    routines,
+    seasons,
+    self_care,
+    self_care_chat,
+    tasks,
+)
 
 app = FastAPI(
     title="LifeOS API",
@@ -47,6 +60,8 @@ app.include_router(routines.router)
 app.include_router(inventory.router)
 app.include_router(companions.router)
 app.include_router(seasons.router)
+app.include_router(self_care.router)
+app.include_router(self_care_chat.router)
 
 
 @app.get("/health")

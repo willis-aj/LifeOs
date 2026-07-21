@@ -72,6 +72,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 8,
         "duration_minutes": 5,
         "xp": 5,
+        "note_template": "Good enough: a quick brush counts, or chew xylitol gum if the brush is too much right now.",
     },
     {
         "id": "brush_teeth_pm",
@@ -81,6 +82,7 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 22,
         "duration_minutes": 5,
         "xp": 5,
+        "note_template": "Good enough: a quick brush counts, or chew xylitol gum if the brush is too much right now.",
     },
     {
         "id": "daily_meds",
@@ -99,6 +101,57 @@ ROUTINES: List[Dict[str, Any]] = [
         "time_of_day": 19,
         "duration_minutes": 20,
         "xp": 15,
+        "note_template": "Good enough: rinse-only counts, or body wipes if water's too much today.",
+    },
+    {
+        "id": "deodorant",
+        "label": "Apply deodorant",
+        "goal": "health",
+        "frequency": "daily",
+        "time_of_day": 8,
+        "duration_minutes": 1,
+        "xp": 5,
+        "note_template": "Good enough: one side counts.",
+    },
+    {
+        "id": "face_wash",
+        "label": "Wash face",
+        "goal": "health",
+        "frequency": "daily",
+        "time_of_day": 8,
+        "duration_minutes": 2,
+        "xp": 5,
+        "note_template": "Good enough: a wipe with a damp cloth counts, no cleanser needed.",
+    },
+    {
+        "id": "nail_trim",
+        "label": "Trim nails",
+        "goal": "health",
+        "frequency": "weekly",
+        "time_of_day": 19,
+        "duration_minutes": 8,
+        "xp": 10,
+        "note_template": "Good enough: just the hands, feet can wait for another day.",
+    },
+    {
+        "id": "towel_swap",
+        "label": "Swap out towel",
+        "goal": "home",
+        "frequency": "weekly",
+        "time_of_day": 19,
+        "duration_minutes": 2,
+        "xp": 5,
+        "note_template": "Good enough: grab any clean towel from the pile, it doesn't need to match.",
+    },
+    {
+        "id": "bedding_change",
+        "label": "Change bedsheets",
+        "goal": "home",
+        "frequency": "monthly",
+        "time_of_day": 12,
+        "duration_minutes": 12,
+        "xp": 15,
+        "note_template": "Good enough: just the pillowcase and top sheet if the fitted sheet is too much today.",
     },
     {
         "id": "weekly_shot",
@@ -286,6 +339,24 @@ ESSENTIAL_ROUTINE_IDS = [
     "daily_meds",
     "weekly_shot",
     "dexcom_sensor",
+    "shower_weekly",
+    "deodorant",
+]
+
+# Routines the Self-Care Agent (life_os/self_care_agent.py,
+# life_os/self_care_agent_chat.py) reasons about: which ones count toward
+# its overwhelm signals and get gentle-nudge phrasing. Deliberately a subset
+# of ESSENTIAL_ROUTINE_IDS union a few lower-priority grooming/environment
+# routines that are fine to drop in Comfort Mode.
+SELF_CARE_ROUTINE_IDS = [
+    "brush_teeth_am",
+    "brush_teeth_pm",
+    "shower_weekly",
+    "deodorant",
+    "face_wash",
+    "nail_trim",
+    "towel_swap",
+    "bedding_change",
 ]
 
 # How many generic deep-work tasks per active goal get scheduled each day
@@ -414,6 +485,7 @@ PLAYER_STATE_FILE = "player_state.json"
 TASKS_FILE = "tasks.json"
 GOALS_FILE = "goal_progress.json"
 ROUTINES_FILE = "routines.json"
+SELF_CARE_CHAT_FILE = "self_care_chat.json"
 
 # Default milestone spacing used when a new goal is created via the CLI and
 # no explicit milestones are supplied.

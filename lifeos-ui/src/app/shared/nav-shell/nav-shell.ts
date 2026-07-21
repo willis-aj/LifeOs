@@ -21,6 +21,7 @@ const NAV_LINKS: NavLink[] = [
   { path: '/backlog', label: 'Backlog', icon: 'inventory_2' },
   { path: '/goals', label: 'Goals', icon: 'flag' },
   { path: '/modes', label: 'Modes', icon: 'tune' },
+  { path: '/self-care', label: 'Self-Care', icon: 'spa' },
   { path: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

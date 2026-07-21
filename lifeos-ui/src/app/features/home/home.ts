@@ -23,6 +23,7 @@ import {
   ScheduledEventDialogData,
 } from '../../shared/scheduled-event-dialog/scheduled-event-dialog';
 import { InventoryDialog, InventoryDialogData } from '../../shared/inventory-dialog/inventory-dialog';
+import { SelfCarePanel } from '../../shared/self-care-panel/self-care-panel';
 import {
   CompleteTaskDialog,
   CompleteTaskDialogData,
@@ -43,6 +44,7 @@ import {
     MatProgressSpinnerModule,
     MatTooltipModule,
     TaskItem,
+    SelfCarePanel,
   ],
   templateUrl: './home.html',
   styleUrl: './home.scss',
