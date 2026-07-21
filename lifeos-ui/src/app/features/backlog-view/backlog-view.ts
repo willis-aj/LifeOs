@@ -16,6 +16,11 @@ import {
   ScheduledEventDialog,
   ScheduledEventDialogData,
 } from '../../shared/scheduled-event-dialog/scheduled-event-dialog';
+import {
+  CompleteTaskDialog,
+  CompleteTaskDialogData,
+  CompleteTaskDialogResult,
+} from '../../shared/complete-task-dialog/complete-task-dialog';
 
 /** Tasks pushed forward today (skip, dependency push, hour drift,
  * end-of-day rollover), what's already lined up for tomorrow, and what's
@@ -73,17 +78,25 @@ export class BacklogView implements OnInit {
   onComplete(task: LifeTask): void {
     const playerId = this.playerContext.playerId();
     if (!playerId) return;
-    this.taskService.completeTask(playerId, task.id).subscribe({
-      next: (result) => {
-        const xp = result['xp_gained'];
-        this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
-        if (result['scheduling_task_completed']) {
-          this.openScheduledEventDialog(task, playerId);
-        } else {
-          this.reload();
-        }
-      },
-      error: (err) => this.notify.error(err),
+    const data: CompleteTaskDialogData = { task, playerId };
+    const ref = this.dialog.open<CompleteTaskDialog, CompleteTaskDialogData, CompleteTaskDialogResult>(
+      CompleteTaskDialog,
+      { width: '480px', data },
+    );
+    ref.afterClosed().subscribe((completion) => {
+      if (!completion) return;
+      this.taskService.completeTask(playerId, task.id, completion).subscribe({
+        next: (result) => {
+          const xp = result['xp_gained'];
+          this.notify.success(typeof xp === 'number' ? `+${xp} XP!` : 'Task completed!');
+          if (result['scheduling_task_completed']) {
+            this.openScheduledEventDialog(task, playerId);
+          } else {
+            this.reload();
+          }
+        },
+        error: (err) => this.notify.error(err),
+      });
     });
   }
 

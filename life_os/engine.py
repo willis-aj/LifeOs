@@ -29,6 +29,7 @@ from . import routines as routines_mod
 from .models import Goal, PlayerState, Routine, Task
 
 NON_BOSS_LOOT_CHANCE = 0.35
+VALID_ROUTINE_FREQUENCIES = {"daily", "weekly", "monthly", "every_n_days", "once"}
 
 
 class LifeOSEngine:
@@ -443,7 +444,9 @@ class LifeOSEngine:
     # Task actions
     # ------------------------------------------------------------------
 
-    def complete_task(self, task: Task) -> Dict:
+    def complete_task(
+        self, task: Task, difficulty: Optional[str] = None, notes: Optional[str] = None
+    ) -> Dict:
         if task.locked:
             return {"locked": True, "message": self.lock_reason(task)}
 
@@ -461,6 +464,10 @@ class LifeOSEngine:
                 result["loot"] = gamification.grant_loot(self.state)
 
         task.completed = True
+        if difficulty is not None:
+            task.difficulty = difficulty
+        if notes is not None:
+            task.notes = notes
         self.state.tasks_completed_total += 1
 
         if task.source_routine_id:
@@ -475,7 +482,9 @@ class LifeOSEngine:
         self.save()
         return result
 
-    def complete_specific_task(self, task_id: str) -> Dict:
+    def complete_specific_task(
+        self, task_id: str, difficulty: Optional[str] = None, notes: Optional[str] = None
+    ) -> Dict:
         """Complete exactly the task with this id - used when multiple
         tasks share an hour and the user picks one from a selection menu.
         Delegates to complete_task() so XP/streak/loot/boss/dependency
@@ -484,7 +493,7 @@ class LifeOSEngine:
         task = scheduler.find_task_by_id(self.schedule, task_id)
         if task is None:
             raise ValueError(f"No such task '{task_id}'.")
-        return self.complete_task(task)
+        return self.complete_task(task, difficulty=difficulty, notes=notes)
 
     def delete_task(self, task_id: str) -> None:
         """Permanently remove a task from the schedule (any day), rather
@@ -606,6 +615,66 @@ class LifeOSEngine:
     def set_companion(self, companion_id: str) -> None:
         self.state.companion_id = companion_id
         self.save()
+
+    # ------------------------------------------------------------------
+    # Routine editing
+    # ------------------------------------------------------------------
+
+    def add_routine(
+        self,
+        label: str,
+        goal_id: Optional[str] = None,
+        duration_minutes: int = 30,
+        xp: Optional[int] = None,
+        frequency: str = "weekly",
+        time_of_day: Optional[int] = None,
+        interval_days: Optional[int] = None,
+        boss: bool = False,
+        note_template: Optional[str] = None,
+    ) -> Routine:
+        """Create a new recurring routine (e.g. from the "create new
+        event or routine" completion-popup form) and fold it straight into
+        today's schedule if it's due. A routine with no completion history
+        is always due, so this typically means it shows up immediately."""
+        label = label.strip()
+        if not label:
+            raise ValueError("Routine label cannot be empty.")
+        if duration_minutes <= 0:
+            raise ValueError("Duration must be a positive number of minutes.")
+        if frequency not in VALID_ROUTINE_FREQUENCIES:
+            raise ValueError(f"Unknown frequency '{frequency}'.")
+        if frequency == "every_n_days" and not interval_days:
+            raise ValueError("interval_days is required for an every_n_days routine.")
+
+        goal = self.goal_by_id(goal_id) if goal_id else None
+        if goal is None:
+            goal = self.goals[0]
+
+        base_slug = persistence.slugify(label)
+        routine_id = base_slug
+        suffix = 2
+        existing_ids = {r.id for r in self.routines}
+        while routine_id in existing_ids:
+            routine_id = f"{base_slug}_{suffix}"
+            suffix += 1
+
+        routine = Routine(
+            id=routine_id,
+            label=label,
+            goal=goal.id,
+            frequency=frequency,
+            time_of_day=time_of_day,
+            duration_minutes=duration_minutes,
+            xp=xp if xp is not None else max(5, round(duration_minutes / 3)),
+            boss=boss,
+            interval_days=interval_days,
+            note_template=note_template,
+        )
+        self.routines.append(routine)
+        self.rebuild_schedule()
+        self.refresh_locks()
+        self.save()
+        return routine
 
     # ------------------------------------------------------------------
     # Goal editing

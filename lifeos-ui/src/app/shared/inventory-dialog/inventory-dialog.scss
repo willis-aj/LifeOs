@@ -1,0 +1,10 @@
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0;
+}
+
+.empty-hint {
+  color: var(--mat-sys-on-surface-variant);
+  min-width: 280px;
+}

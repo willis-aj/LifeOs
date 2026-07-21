@@ -26,7 +26,15 @@
             <mat-icon matChipAvatar>military_tech</mat-icon>
             Boss fights won: {{ v.state.boss_fights_won }}
           </mat-chip>
-          <mat-chip>
+          <mat-chip
+            class="inventory-chip"
+            role="button"
+            tabindex="0"
+            matTooltip="Open inventory"
+            (click)="openInventory()"
+            (keydown.enter)="openInventory()"
+            (keydown.space)="openInventory()"
+          >
             <mat-icon matChipAvatar>inventory_2</mat-icon>
             Inventory: {{ v.state.inventory.length }}
           </mat-chip>
@@ -40,7 +48,7 @@
     </mat-card>
 
     <div class="current-hour-section">
-      <h2>Current hour: {{ v.current_hour }}:00</h2>
+      <h2>Current hour: {{ formatHour(v.current_hour) }}</h2>
 
       @if (v.current_hour_tasks.length === 0) {
         <p class="empty-hint">Nothing scheduled this hour.</p>

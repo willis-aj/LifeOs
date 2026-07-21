@@ -22,6 +22,11 @@ class AddManualTaskRequest(BaseModel):
     hour: Optional[int] = Field(default=None, ge=0, le=23)
 
 
+class CompleteTaskRequest(BaseModel):
+    difficulty: Optional[str] = None  # "easy" | "medium" | "hard" | "very_hard"
+    notes: Optional[str] = None
+
+
 class EditTaskRequest(BaseModel):
     label: Optional[str] = None
     duration_minutes: Optional[int] = Field(default=None, gt=0)
@@ -62,3 +67,15 @@ class CreateScheduledEventRequest(BaseModel):
     duration_minutes: int = Field(default=60, gt=0)
     goal_id: Optional[str] = None
     boss: bool = False
+
+
+class AddRoutineRequest(BaseModel):
+    label: str = Field(min_length=1)
+    goal_id: Optional[str] = None
+    duration_minutes: int = Field(default=30, gt=0)
+    xp: Optional[int] = Field(default=None, gt=0)
+    frequency: str = "weekly"  # "daily" | "weekly" | "monthly" | "every_n_days" | "once"
+    time_of_day: Optional[int] = Field(default=None, ge=0, le=23)
+    interval_days: Optional[int] = Field(default=None, gt=0)
+    boss: bool = False
+    note_template: Optional[str] = None

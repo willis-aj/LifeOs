@@ -84,6 +84,7 @@ def _routine_to_task(routine: Routine, today: datetime.date, xp_multiplier: floa
         source_routine_id=routine.id,
         dependencies=list(routine.requires),
         is_scheduling_task=routine.is_scheduling_task,
+        note_template=routine.note_template,
     )
 
 

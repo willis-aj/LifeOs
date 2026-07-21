@@ -13,6 +13,7 @@ import { CreateScheduledEventRequest } from '../../core/services/event.service';
 import { GoalService } from '../../core/services/goal.service';
 import { GoalProgress } from '../../core/models/goal.model';
 import { NotifyService } from '../../core/services/notify.service';
+import { formatHour } from '../../core/utils/format-hour';
 
 export interface ScheduledEventDialogData {
   scheduledTaskLabel: string;
@@ -71,12 +72,7 @@ export class ScheduledEventDialog implements OnInit {
     });
   }
 
-  formatHour(hour: number): string {
-    const period = hour < 12 ? 'AM' : 'PM';
-    let display = hour % 12;
-    if (display === 0) display = 12;
-    return `${display}:00 ${period}`;
-  }
+  readonly formatHour = formatHour;
 
   create(): void {
     if (!this.date || this.durationMinutes <= 0) {

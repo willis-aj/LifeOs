@@ -19,7 +19,19 @@ export interface LifeTask {
   lock_reason: string | null;
   push_reason: PushReason | null;
   is_scheduling_task: boolean;
+  difficulty: string | null;
+  notes: string | null;
+  note_template: string | null;
 }
+
+export type TaskDifficulty = 'easy' | 'medium' | 'hard' | 'very_hard';
+
+export const DIFFICULTY_LABELS: Record<TaskDifficulty, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+  very_hard: 'Very Hard',
+};
 
 export type PushReason = 'skip' | 'dependency_push' | 'hour_drift' | 'eod_rollover';
 

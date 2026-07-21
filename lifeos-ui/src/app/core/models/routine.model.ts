@@ -14,4 +14,5 @@ export interface Routine {
   is_scheduling_task: boolean;
   last_completed_date: string | null;
   missed_dates: string[];
+  note_template: string | null;
 }
